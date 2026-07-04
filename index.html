@@ -293,7 +293,7 @@ function setDot(cls, lbl) { const d = document.getElementById("syncDot"); d.clas
 async function pull() {
   if (!cfg()) { setDot("", "local only"); return; }
   try {
-    const r = await fetch(cfg());
+    const r = await fetch(cfg() + "?t=" + Date.now());
     const remote = await r.json();
     Object.entries(remote).forEach(([k, v]) => { if (v && !(k in queue)) state[k] = v; });
     Object.keys(state).forEach(k => { if (!(k in remote) && !(k in queue)) delete state[k]; });
@@ -330,16 +330,25 @@ async function loadQuote() {
   quoteBusy = false;
 }
 
+let preQ = null;
+async function fetchQ() {
+  const r = await fetch(cfg(), { method: "POST", body: JSON.stringify({ quiz: "next", week: curWeek() }) });
+  const d = await r.json();
+  if (!d.question || !d.options) throw new Error("bad");
+  return d;
+}
+async function prefetchQ() {
+  if (preQ || !cfg()) return;
+  try { preQ = await fetchQ(); } catch(e) {}
+}
 async function nextQ() {
   if (!cfg()) { curQ = null; render(); return; }
-  qBusy = true; qErr = false; answered = false; curQ = null; render();
-  try {
-    const r = await fetch(cfg(), { method: "POST", body: JSON.stringify({ quiz: "next", week: curWeek() }) });
-    const d = await r.json();
-    if (!d.question || !d.options) throw new Error("bad");
-    curQ = d;
-  } catch(e) { qErr = true; }
+  answered = false;
+  if (preQ) { curQ = preQ; preQ = null; render(); prefetchQ(); return; }
+  qBusy = true; qErr = false; curQ = null; render();
+  try { curQ = await fetchQ(); } catch(e) { qErr = true; }
   qBusy = false; render();
+  prefetchQ();
 }
 
 function answerQ(btn, i) {
@@ -532,9 +541,17 @@ function go(t) {
 
 if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").catch(() => {}); }
 
+async function refresh() {
+  if (Object.keys(queue).length) { flushQueue(); return; }
+  const before = JSON.stringify(state);
+  await pull();
+  if (JSON.stringify(state) !== before && tab !== "learn") render();
+}
+
 render();
 pull().then(render);
-setInterval(flushQueue, 30000);
+setInterval(refresh, 60000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 </script>
 </body>
 </html>
