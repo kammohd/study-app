@@ -7,6 +7,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="AI Study">
 <meta name="theme-color" content="#b45309">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
 <title>AI Study</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -40,7 +42,7 @@
   .weekhd { display: flex; justify-content: space-between; align-items: center; padding: 13px 16px; background: #fff; border: 1px solid #e7e4de; border-radius: 14px; margin-bottom: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }
   .weekhd .muted { font-weight: 400; }
   .weekhd.cur { border: 2px solid #b45309; }
-  .weekbody { display: none; padding: 4px 16px 12px; background: #fff; border: 1px solid #e7e4de; border-radius: 14px; margin: -6px 0 8px; border-top: none; border-radius: 0 0 14px 14px; }
+  .weekbody { display: none; padding: 4px 16px 12px; background: #fff; border: 1px solid #e7e4de; margin: -6px 0 8px; border-top: none; border-radius: 0 0 14px 14px; }
   .open + .weekbody { display: block; }
   .phasehd { font-size: 12px; font-weight: 700; color: #92400e; text-transform: uppercase; letter-spacing: .05em; margin: 16px 0 8px; }
   .quizq { font-size: 15px; font-weight: 600; margin-bottom: 12px; line-height: 1.4; }
@@ -55,8 +57,8 @@
   nav button { flex: 1; background: none; border: none; padding: 10px 0 8px; font-size: 10.5px; color: #999; cursor: pointer; }
   nav button.act { color: #b45309; font-weight: 700; }
   nav button span { display: block; font-size: 20px; margin-bottom: 1px; }
-  .banner { background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 11px 14px; font-size: 13px; color: #92400e; margin-bottom: 12px; font-style: italic; }
-  .ring { width: 74px; height: 74px; }
+  .banner { background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 11px 14px; font-size: 13px; color: #92400e; margin-bottom: 12px; font-style: italic; min-height: 42px; }
+  .spin { text-align: center; color: #999; font-size: 13px; padding: 18px 0; }
   h2 { font-size: 16px; margin-bottom: 10px; }
 </style>
 </head>
@@ -80,11 +82,8 @@ const QUOTES = [
   "35 minutes tonight beats 5 planned hours this weekend.",
   "You learned Salesforce from zero once. Round two has a head start.",
   "Every tick is a brick in the bridge out of the daily grind.",
-  "The person who knows the CRM and builds the AI layer is rare. Becoming that person, daily.",
   "Consistency beats intensity.",
-  "Four months from now you'll wish you started today. You did.",
-  "Tired? Do the smallest version. Momentum over perfection.",
-  "Certs open doors. Shipped projects walk you through them."
+  "Four months from now you'll wish you started today. You did."
 ];
 
 const W = [
@@ -154,7 +153,7 @@ print("Saved rates.csv — download it from Colab's file panel")`,
 
 KEY = "PASTE_YOUR_GEMINI_KEY"  # free at aistudio.google.com
 url = ("https://generativelanguage.googleapis.com/v1beta/"
-       "models/gemini-2.5-flash:generateContent")
+       "models/gemini-flash-latest:generateContent")
 
 body = {"contents": [{"parts": [{"text": "Explain what an API is in one sentence"}]}]}
 r = requests.post(url, params={"key": KEY}, json=body, timeout=60)
@@ -268,14 +267,16 @@ for c in cases:
 ];
 const PHASES = [["Phase 1 · Python foundations",0,4],["Phase 2 · LLM APIs & prompting",4,8],["Phase 3 · RAG",8,12],["Phase 4 · Capstone & cert",12,16]];
 
-let state = {}, queue = {}, tab = "today", quizIdx = 0, quizScore = 0, quizWeek = null;
+let state = {}, queue = {}, tab = "today";
+let liveQuote = "", quoteBusy = false;
+let curQ = null, qBusy = false, qErr = false, answered = false, qScore = 0;
 try { state = JSON.parse(localStorage.getItem("prog")) || {}; } catch(e) {}
 try { queue = JSON.parse(localStorage.getItem("queue")) || {}; } catch(e) {}
 const cfg = () => localStorage.getItem("sheetUrl") || "";
 
 function save() { localStorage.setItem("prog", JSON.stringify(state)); localStorage.setItem("queue", JSON.stringify(queue)); }
-
 function curWeek() { const d = Math.floor((Date.now() - START) / 864e5); return Math.min(16, Math.max(1, Math.floor(d / 7) + 1)); }
+
 function todayInfo() {
   const now = new Date();
   const d = Math.floor((now - START) / 864e5);
@@ -314,6 +315,47 @@ async function flushQueue() {
   } catch(e) { setDot("off", "will retry"); }
 }
 
+async function loadQuote() {
+  if (!cfg() || quoteBusy) return;
+  quoteBusy = true;
+  try {
+    const r = await fetch(cfg() + "?action=quote&t=" + Date.now());
+    const d = await r.json();
+    if (d.quote) {
+      liveQuote = d.quote;
+      const el = document.getElementById("quoteTxt");
+      if (el) el.textContent = "“" + liveQuote + "”";
+    }
+  } catch(e) {}
+  quoteBusy = false;
+}
+
+async function nextQ() {
+  if (!cfg()) { curQ = null; render(); return; }
+  qBusy = true; qErr = false; answered = false; curQ = null; render();
+  try {
+    const r = await fetch(cfg(), { method: "POST", body: JSON.stringify({ quiz: "next", week: curWeek() }) });
+    const d = await r.json();
+    if (!d.question || !d.options) throw new Error("bad");
+    curQ = d;
+  } catch(e) { qErr = true; }
+  qBusy = false; render();
+}
+
+function answerQ(btn, i) {
+  if (answered || !curQ) return;
+  answered = true;
+  const right = Number(curQ.correct);
+  document.querySelectorAll(".quizopt").forEach((b, j) => { if (j === right) b.classList.add("right"); });
+  if (i !== right) { btn.classList.add("wrong"); }
+  else {
+    qScore++;
+    fetch(cfg(), { method: "POST", body: JSON.stringify({ quiz: "mastered", question: curQ.question }) }).catch(() => {});
+  }
+  const s = document.getElementById("qScore");
+  if (s) s.textContent = "score " + qScore;
+}
+
 function toggle(id) {
   if (state[id]) { delete state[id]; push(id, null); }
   else { const d = new Date().toISOString().slice(0,10); state[id] = d; push(id, d); }
@@ -328,13 +370,13 @@ function stats() {
   return { done, total, pct: Math.round(done/total*100), streak };
 }
 
-function esc(s) { return s.replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
 
 function render() {
   const v = document.getElementById("view");
   ["today","plan","learn","set"].forEach(t => document.getElementById("nav-"+t).className = t===tab ? "act" : "");
   document.getElementById("topTitle").textContent = {today:"Today", plan:"16-week plan", learn:"Learn", set:"Sync & settings"}[tab];
-  if (tab === "today") v.innerHTML = rToday();
+  if (tab === "today") { v.innerHTML = rToday(); loadQuote(); }
   if (tab === "plan") v.innerHTML = rPlan();
   if (tab === "learn") v.innerHTML = rLearn();
   if (tab === "set") v.innerHTML = rSet();
@@ -342,11 +384,11 @@ function render() {
 
 function rToday() {
   const t = todayInfo(), s = stats();
-  const quote = QUOTES[Math.floor(Date.now()/864e5) % QUOTES.length];
+  const q = liveQuote || QUOTES[Math.floor(Date.now()/864e5) % QUOTES.length];
   let card;
   if (t.pre) card = `<div class="card"><h2>Starts Monday, 6 July</h2><p class="muted">Week 1, day 1: install Python — or just open Colab and skip the install entirely.</p></div>`;
   else if (t.done) card = `<div class="card"><h2>Program complete 🎉</h2><p class="muted">16 weeks done. Time for AI-102 and job applications.</p></div>`;
-  else if (t.rest) card = `<div class="card"><h2>Sunday — rest day</h2><p class="muted">Week ${t.week} of 16. Recharge; Monday continues the plan. Feeling keen? Take this week's quiz in Learn.</p></div>`;
+  else if (t.rest) card = `<div class="card"><h2>Sunday — rest day</h2><p class="muted">Week ${t.week} of 16. Recharge; Monday continues the plan. Feeling keen? Take a quiz in Learn.</p></div>`;
   else {
     const wk = W[t.week-1];
     const done = !!state[t.id];
@@ -357,7 +399,7 @@ function rToday() {
       ${wk.code ? `<a class="btn colab" href="${COLAB}" target="_blank">▶ Open Google Colab</a>
       <button class="btn ghost" onclick="copyCode(${t.week-1}, this)">📋 Copy this week's starter code</button>
       <pre class="code">${esc(wk.code)}</pre>` : ""}
-      ${!t.phone ? `<p class="muted" style="margin-top:10px">Phone-only tonight? Watch the concept video, drill in the Learn tab quiz, or run the starter code in Colab — the PC part can wait for the weekend.</p>` : ""}
+      ${!t.phone ? `<p class="muted" style="margin-top:10px">Phone-only tonight? Run the starter code in Colab, or take a quiz in Learn — the PC part can wait for the weekend.</p>` : ""}
       <button class="btn primary ${done?'':'undone'}" onclick="toggle('${t.id}')">${done ? "✓ Done — tap to undo" : "Mark today done"}</button>
     </div>`;
   }
@@ -366,7 +408,7 @@ function rToday() {
     <div class="stat"><b>${s.done}/${s.total}</b><span>sessions</span></div>
     <div class="stat"><b>${s.pct}%</b><span>complete</span></div>
   </div>
-  <div class="banner">“${quote}”</div>${card}`;
+  <div class="banner" id="quoteBanner">“<span id="quoteTxt">${esc(q)}</span>”</div>${card}`;
 }
 
 function rPlan() {
@@ -392,55 +434,103 @@ function rPlan() {
 }
 
 function rLearn() {
-  const w = quizWeek || curWeek();
+  const w = curWeek();
   const wk = W[w-1];
-  const q = wk.quiz[quizIdx % wk.quiz.length];
-  return `<div class="card">
-    <div class="muted" style="margin-bottom:8px">Quiz — week ${w}: ${esc(wk.th)} · question ${ (quizIdx % wk.quiz.length) + 1}/${wk.quiz.length} · score ${quizScore}</div>
-    <div class="quizq">${esc(q[0])}</div>
-    ${q[1].map((o, i) => `<button class="quizopt" onclick="answer(this, ${i}, ${q[2]})">${esc(o)}</button>`).join("")}
-    <div style="display:flex;gap:8px">
-      <button class="btn ghost" style="flex:1" onclick="quizIdx++; render()">Next →</button>
-      <button class="btn ghost" style="flex:1" onclick="quizWeek=((${w})%16)+1; quizIdx=0; quizScore=0; render()">Week ${(w%16)+1} →</button>
-    </div>
-  </div>
-  <div class="card"><h2>This week's resources</h2>
+  let quizCard;
+  if (!cfg()) {
+    const q = wk.quiz[0];
+    quizCard = `<div class="card">
+      <div class="muted" style="margin-bottom:8px">Quiz (offline set — connect sync for AI questions)</div>
+      <div class="quizq">${esc(q[0])}</div>
+      ${q[1].map((o, i) => `<button class="quizopt" onclick="answerStatic(this, ${i}, ${q[2]})">${esc(o)}</button>`).join("")}
+    </div>`;
+  } else if (qBusy) {
+    quizCard = `<div class="card"><div class="spin">🧠 Writing you a fresh question…</div></div>`;
+  } else if (qErr) {
+    quizCard = `<div class="card"><div class="muted">Couldn't generate a question — connection issue or quota. </div><button class="btn ghost" onclick="nextQ()">Try again</button></div>`;
+  } else if (curQ) {
+    quizCard = `<div class="card">
+      <div class="muted" style="margin-bottom:8px">AI quiz · adapts to your progress · <span id="qScore">score ${qScore}</span></div>
+      <div class="quizq">${esc(curQ.question)}</div>
+      ${curQ.options.map((o, i) => `<button class="quizopt" onclick="answerQ(this, ${i})">${esc(o)}</button>`).join("")}
+      <button class="btn ghost" onclick="nextQ()">Next question →</button>
+    </div>`;
+  } else {
+    quizCard = `<div class="card"><h2>AI quiz</h2><p class="muted">Fresh questions written for exactly what you've studied. Answer one correctly and it never comes back.</p><button class="btn primary undone" onclick="nextQ()">Get a question</button></div>`;
+  }
+  return quizCard + `<div class="card"><h2>This week's resources</h2>
     ${wk.rs.map(r => `<a class="rsrc" href="${r[2]}" target="_blank"><span>🔗</span><span>${esc(r[0])}<small>${esc(r[1])}</small></span></a>`).join("")}
   </div>
   <div class="card"><h2>On-the-go drills</h2>
-    <a class="rsrc" href="https://getmimo.com" target="_blank"><span>📲</span><span>Mimo — 5-min Python drills<small>iOS & Android</small></span></a>
-    <a class="rsrc" href="https://claude.ai" target="_blank"><span>🎙️</span><span>Claude — "quiz me on ${esc(wk.th)}"<small>voice mode while commuting</small></span></a>
     <a class="rsrc" href="https://colab.new" target="_blank"><span>▶</span><span>Colab — blank notebook<small>hands-on anywhere</small></span></a>
+    <a class="rsrc" href="https://getmimo.com" target="_blank"><span>📲</span><span>Mimo — 5-min Python drills<small>iOS & Android</small></span></a>
   </div>`;
 }
 
+function answerStatic(btn, i, right) {
+  document.querySelectorAll(".quizopt").forEach((b, j) => { if (j === right) b.classList.add("right"); });
+  if (i !== right) btn.classList.add("wrong");
+  document.querySelectorAll(".quizopt").forEach(b => b.onclick = null);
+}
+
 function rSet() {
+  const perm = (typeof Notification !== "undefined") ? Notification.permission : "unsupported";
   return `<div class="card"><h2>Google Sheets sync</h2>
-    <p class="muted">Paste your Apps Script web-app URL (see SETUP-GUIDE step 3). Ticks then sync through your own Google Sheet across all devices.</p>
+    <p class="muted">Your Apps Script web-app URL (ends in /exec).</p>
     <input type="url" id="urlIn" placeholder="https://script.google.com/macros/s/…/exec" value="${cfg()}">
     <button class="btn primary undone" onclick="localStorage.setItem('sheetUrl', document.getElementById('urlIn').value.trim()); pull().then(render)">Save & test connection</button>
     <button class="btn ghost" onclick="pull().then(render)">↻ Sync now</button>
   </div>
+  <div class="card"><h2>Notifications</h2>
+    <p class="muted">Status: <b>${perm}</b>. Needs the app installed to your home screen (iOS 16.4+). Paste the VAPID public key, then enable.</p>
+    <input type="text" id="vapidIn" placeholder="VAPID public key (starts with B…)" value="${localStorage.getItem('vapidKey') || ''}">
+    <button class="btn primary undone" onclick="localStorage.setItem('vapidKey', document.getElementById('vapidIn').value.trim()); enablePush()">🔔 Enable notifications</button>
+    <p class="muted" id="pushStatus"></p>
+  </div>
   <div class="card"><h2>Data</h2>
-    <p class="muted">Progress: ${stats().done}/96 · pending sync: ${Object.keys(queue).length}</p>
+    <p class="muted">Progress: ${stats().done}/96 · pending sync: ${Object.keys(queue).length} · app v2</p>
     <button class="btn ghost" onclick="navigator.clipboard.writeText(JSON.stringify(state)); this.textContent='Copied ✓'">Export progress (copy JSON)</button>
   </div>
   <div class="card"><h2>Install as app</h2>
-    <p class="muted"><b>iPhone:</b> Safari → Share → Add to Home Screen.<br><b>Android:</b> Chrome → menu ⋮ → Add to Home screen.<br>It then opens full-screen like a native app.</p>
+    <p class="muted"><b>iPhone:</b> Safari → Share → Add to Home Screen.<br><b>Android:</b> Chrome → menu ⋮ → Add to Home screen.</p>
   </div>`;
 }
 
-function answer(btn, i, right) {
-  document.querySelectorAll(".quizopt").forEach((b, j) => { if (j === right) b.classList.add("right"); });
-  if (i !== right) btn.classList.add("wrong"); else quizScore++;
-  document.querySelectorAll(".quizopt").forEach(b => b.onclick = null);
+async function enablePush() {
+  const st = document.getElementById("pushStatus");
+  try {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      st.textContent = "Push not supported here. On iPhone: install to home screen first, then enable from inside the installed app.";
+      return;
+    }
+    const vk = localStorage.getItem("vapidKey") || "";
+    if (!vk) { st.textContent = "Paste the VAPID public key first."; return; }
+    const reg = await navigator.serviceWorker.ready;
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") { st.textContent = "Permission not granted."; return; }
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64(vk) });
+    await fetch(cfg(), { method: "POST", body: JSON.stringify({ subscribe: sub.toJSON() }) });
+    st.textContent = "Notifications enabled on this device ✓";
+  } catch (err) { st.textContent = "Error: " + err.message; }
+}
+
+function urlB64(s) {
+  const pad = "=".repeat((4 - (s.length % 4)) % 4);
+  const b = (s + pad).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
 }
 
 function copyCode(w, btn) {
   navigator.clipboard.writeText(W[w].code).then(() => { btn.textContent = "Copied ✓ — paste in Colab"; });
 }
 
-function go(t) { tab = t; render(); }
+function go(t) {
+  tab = t; render();
+  if (t === "learn" && cfg() && !curQ && !qBusy && !qErr) nextQ();
+}
+
+if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").catch(() => {}); }
 
 render();
 pull().then(render);
