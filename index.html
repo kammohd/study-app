@@ -926,6 +926,12 @@ try { queue = JSON.parse(localStorage.getItem("queue")) || {}; } catch(e) {}
 const cfg = () => localStorage.getItem("sheetUrl") || "";
 
 function save() { localStorage.setItem("prog", JSON.stringify(state)); localStorage.setItem("queue", JSON.stringify(queue)); }
+// Local calendar date (YYYY-MM-DD) — never toISOString(), which is UTC and
+// stamps late-night ticks (before 4am in the UAE) with yesterday's date.
+function localDate(d) {
+  d = d || new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
 function curWeek() { const d = Math.floor((Date.now() - START) / 864e5); return Math.min(16, Math.max(1, Math.floor(d / 7) + 1)); }
 
 function todayInfo() {
@@ -1020,15 +1026,15 @@ function answerQ(btn, i) {
 
 function toggle(id) {
   if (state[id]) { delete state[id]; push(id, null); }
-  else { const d = new Date().toISOString().slice(0,10); state[id] = d; push(id, d); }
+  else { const d = localDate(); state[id] = d; push(id, d); }
   save(); render();
 }
 
 function stats() {
   const total = 96, done = Object.keys(state).filter(k => /^w\d+t\d+$/.test(k)).length;
   const dates = new Set(Object.values(state)); let streak = 0; const d = new Date();
-  if (!dates.has(d.toISOString().slice(0,10))) d.setDate(d.getDate()-1);
-  while (dates.has(d.toISOString().slice(0,10))) { streak++; d.setDate(d.getDate()-1); }
+  if (!dates.has(localDate(d))) d.setDate(d.getDate()-1);
+  while (dates.has(localDate(d))) { streak++; d.setDate(d.getDate()-1); }
   return { done, total, pct: Math.round(done/total*100), streak };
 }
 
@@ -1040,7 +1046,7 @@ function vidWatched(wk, d) { return !!state["w" + wk + "v" + d]; }
 function toggleV(wk, d, btn) {
   const id = "w" + wk + "v" + d;
   if (state[id]) { delete state[id]; push(id, null); }
-  else { const dt = new Date().toISOString().slice(0,10); state[id] = dt; push(id, dt); }
+  else { const dt = localDate(); state[id] = dt; push(id, dt); }
   save();
   if (document.querySelector(".vframe") || document.querySelector(".pybox")) {
     // media/editor open — update in place instead of re-rendering (which would kill it)
@@ -1191,7 +1197,7 @@ function pyTab(e) {
 
 function markSolved(wk, i) {
   const id = "w" + wk + "e" + i;
-  if (!state[id]) { const dt = new Date().toISOString().slice(0, 10); state[id] = dt; push(id, dt); save(); }
+  if (!state[id]) { const dt = localDate(); state[id] = dt; push(id, dt); save(); }
   const st = document.getElementById("pyst_" + wk + "_" + i);
   if (st) { st.textContent = "✓ solved"; st.className = "expass"; }
 }
