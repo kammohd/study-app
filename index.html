@@ -59,6 +59,23 @@
   nav button span { display: block; font-size: 20px; margin-bottom: 1px; }
   .banner { background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 11px 14px; font-size: 13px; color: #92400e; margin-bottom: 12px; font-style: italic; min-height: 42px; }
   .spin { text-align: center; color: #999; font-size: 13px; padding: 18px 0; }
+  .vidbox { margin-top: 10px; }
+  .vfacade { position: relative; aspect-ratio: 16/9; border-radius: 12px; overflow: hidden; background: #000; cursor: pointer; }
+  .vfacade img { width: 100%; height: 100%; object-fit: cover; opacity: .85; display: block; }
+  .vplay { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 54px; height: 54px; border-radius: 50%; background: #b45309ee; color: #fff; font-size: 22px; display: flex; align-items: center; justify-content: center; padding-left: 4px; }
+  .vdur { position: absolute; right: 8px; bottom: 8px; background: #000c; color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 5px; }
+  .vframe { aspect-ratio: 16/9; border-radius: 12px; overflow: hidden; background: #000; }
+  .vframe iframe { width: 100%; height: 100%; border: none; display: block; }
+  .vmeta { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 2px 0; }
+  .vtitle { font-size: 13px; font-weight: 600; line-height: 1.35; }
+  .vtick { border: 1.5px solid #d1cec6; background: #fff; border-radius: 8px; padding: 6px 10px; font-size: 12px; color: #666; cursor: pointer; white-space: nowrap; }
+  .vtick.on { background: #16a34a; border-color: #16a34a; color: #fff; }
+  .vrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f1efe9; cursor: pointer; }
+  .vrow:last-child { border-bottom: none; }
+  .vrow .vthumb { width: 92px; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; }
+  .vrow .vinfo { flex: 1; font-size: 13px; line-height: 1.35; }
+  .vrow .vinfo small { display: block; color: #888; font-size: 11px; margin-top: 2px; }
+  .vrow.seen .vinfo { color: #999; }
   h2 { font-size: 16px; margin-bottom: 10px; }
 </style>
 </head>
@@ -267,6 +284,38 @@ for c in cases:
 ];
 const PHASES = [["Phase 1 · Python foundations",0,4],["Phase 2 · LLM APIs & prompting",4,8],["Phase 3 · RAG",8,12],["Phase 4 · Capstone & cert",12,16]];
 
+// Day-matched short videos (5–20 min), one per study day. [title, youtubeId, duration]
+const YT = {
+ 1: [
+  ["Google Colab for beginners — run your first Python","RLYoEyIHL6A","10:39"],
+  ["Python variables (Mosh)","cQT33yu9pY8","6:36"],
+  ["Python dictionaries are easy (Bro Code)","MZZSMaEAC2g","8:06"],
+  ["Learn Python for loops in 5 minutes (Bro Code)","KWgYha0clzw","5:06"],
+  ["Functions in Python are easy (Bro Code)","89cGQjB5R4M","10:38"],
+  ["Super easy first Python project — Madlibs","lpMHzQO5dXA","12:19"]],
+ 2: [
+  ["Write files using Python (Bro Code)","1IYrmTTKOoI","13:47"],
+  ["How to use JSON in Python","-51jxlQaxyA","6:11"],
+  ["CSV module — read, parse, write (Corey Schafer)","q5uM4VKywbA","16:12"],
+  ["Try/Except error handling (Corey Schafer)","NIWwJbo-9_8","10:34"],
+  ["csv.DictReader — rows as dictionaries","5CEsJkKhS78","17:00"],
+  ["Convert CSV to JSON in Python","LeFDBRAhRls","5:20"]],
+ 3: [
+  ["HTTP & the request–response cycle explained","eesqK59rhGA","8:55"],
+  ["Request API data with Python in 8 min (Bro Code)","JVQNywo4AbU","8:34"],
+  ["Parse JSON from an API response","eDOP7OIev3A","3:06"],
+  ["API auth explained: keys vs OAuth vs JWT","GcVtElYa17s","9:42"],
+  ["Build a weather app with a free API","baWzHKfrvqw","8:36"],
+  ["Fetch API data into a CSV","bHCHKeJ6bI8","5:24"]],
+ 4: [
+  ["Create your first GitHub repository","-RZ03WHqkaY","9:32"],
+  ["Git basics: add, commit, push","eL_0Ok_Gkas","16:00"],
+  ["if __name__ == '__main__' explained","x5IbdKnvt6k","5:08"],
+  ["25 nooby Python habits to ditch (mCoding)","qUeud6DvOWI","9:12"],
+  ["How to write a useful README","E6NO0rgFub4","8:27"],
+  ["Make your GitHub stand out to recruiters","z8UPAVTh2aE","8:13"]],
+};
+
 let state = {}, queue = {}, tab = "today";
 let liveQuote = "", quoteBusy = false;
 let curQ = null, qBusy = false, qErr = false, answered = false, qScore = 0;
@@ -372,7 +421,7 @@ function toggle(id) {
 }
 
 function stats() {
-  const total = 96, done = Object.keys(state).filter(k => k.startsWith("w")).length;
+  const total = 96, done = Object.keys(state).filter(k => /^w\d+t\d+$/.test(k)).length;
   const dates = new Set(Object.values(state)); let streak = 0; const d = new Date();
   if (!dates.has(d.toISOString().slice(0,10))) d.setDate(d.getDate()-1);
   while (dates.has(d.toISOString().slice(0,10))) { streak++; d.setDate(d.getDate()-1); }
@@ -380,6 +429,68 @@ function stats() {
 }
 
 function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+
+// ---- Videos ----
+function vidWatched(wk, d) { return !!state["w" + wk + "v" + d]; }
+
+function toggleV(wk, d, btn) {
+  const id = "w" + wk + "v" + d;
+  if (state[id]) { delete state[id]; push(id, null); }
+  else { const dt = new Date().toISOString().slice(0,10); state[id] = dt; push(id, dt); }
+  save();
+  if (document.querySelector(".vframe")) {
+    // a video is playing — update in place instead of re-rendering (which would kill the player)
+    if (btn) { btn.classList.toggle("on", !!state[id]); btn.textContent = state[id] ? "✓ Watched" : "Mark watched"; }
+  } else { render(); }
+}
+
+function pickVid(wk, prefDay) {
+  const list = YT[wk] || [];
+  if (!list.length) return 0;
+  const order = [];
+  if (prefDay >= 1 && prefDay <= list.length) order.push(prefDay);
+  for (let d = 1; d <= list.length; d++) if (d !== prefDay) order.push(d);
+  for (const d of order) if (list[d-1] && !vidWatched(wk, d)) return d;
+  return -1; // all watched
+}
+
+function vidCard(wk, d) {
+  const v = (YT[wk] || [])[d-1]; if (!v) return "";
+  const seen = vidWatched(wk, d);
+  return `<div class="vidbox" id="vb_${wk}_${d}">
+    <div class="vfacade" onclick="playVid(${wk},${d},'${v[1]}')">
+      <img src="https://i.ytimg.com/vi/${v[1]}/hqdefault.jpg" alt="" loading="lazy">
+      <div class="vplay">▶</div><span class="vdur">${v[2]}</span>
+    </div>
+    <div class="vmeta"><span class="vtitle">${esc(v[0])}</span>
+      <button class="vtick ${seen?'on':''}" onclick="toggleV(${wk},${d},this)">${seen?'✓ Watched':'Mark watched'}</button>
+    </div></div>`;
+}
+
+function playVid(wk, d, id) {
+  const f = document.querySelector(`#vb_${wk}_${d} .vfacade`);
+  if (f) f.outerHTML = `<div class="vframe"><iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1&playsinline=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>`;
+}
+
+function vidRow(wk, d) {
+  const v = (YT[wk] || [])[d-1]; if (!v) return "";
+  const seen = vidWatched(wk, d);
+  return `<div class="vrow ${seen?'seen':''}" id="vr_${wk}_${d}">
+    <img class="vthumb" src="https://i.ytimg.com/vi/${v[1]}/mqdefault.jpg" alt="" loading="lazy" onclick="expandVid(${wk},${d})">
+    <div class="vinfo" onclick="expandVid(${wk},${d})"><b>D${d}</b> · ${esc(v[0])}<small>${v[2]}${seen?' · watched ✓':''}</small></div>
+    <button class="vtick ${seen?'on':''}" onclick="toggleV(${wk},${d},this)">${seen?'✓':'○'}</button></div>`;
+}
+
+function expandVid(wk, d) {
+  const v = (YT[wk] || [])[d-1]; if (!v) return;
+  const seen = vidWatched(wk, d);
+  const row = document.getElementById(`vr_${wk}_${d}`);
+  if (row) row.outerHTML = `<div class="vidbox">
+    <div class="vframe"><iframe src="https://www.youtube-nocookie.com/embed/${v[1]}?autoplay=1&playsinline=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
+    <div class="vmeta"><span class="vtitle">${esc(v[0])}</span>
+      <button class="vtick ${seen?'on':''}" onclick="toggleV(${wk},${d},this)">${seen?'✓ Watched':'Mark watched'}</button>
+    </div></div>`;
+}
 
 function render() {
   const v = document.getElementById("view");
@@ -412,12 +523,24 @@ function rToday() {
       <button class="btn primary ${done?'':'undone'}" onclick="toggle('${t.id}')">${done ? "✓ Done — tap to undo" : "Mark today done"}</button>
     </div>`;
   }
+  let vidSec = "";
+  if (!t.done) {
+    const vw = t.pre ? 1 : (t.week || curWeek());
+    const pd = t.dow || 0;
+    const pick = pickVid(vw, pd);
+    if (pick > 0) {
+      const label = t.pre ? "🎬 Get a head start" : (t.rest ? "🎬 Optional Sunday watch" : (pick === pd ? "🎬 Today's watch" : "🎬 Catch-up watch"));
+      vidSec = `<div class="card"><div class="muted" style="margin-bottom:4px">${label} · ${(YT[vw][pick-1]||[])[2] || ""}</div>${vidCard(vw, pick)}</div>`;
+    } else if (pick === -1) {
+      vidSec = `<div class="card"><div class="muted">🎬 All of week ${vw}'s videos watched 🔥 Rewatch any in Learn, or grab a quiz.</div></div>`;
+    }
+  }
   return `<div class="statrow">
     <div class="stat"><b>${s.streak}</b><span>streak</span></div>
     <div class="stat"><b>${s.done}/${s.total}</b><span>sessions</span></div>
     <div class="stat"><b>${s.pct}%</b><span>complete</span></div>
   </div>
-  <div class="banner" id="quoteBanner">“<span id="quoteTxt">${esc(q)}</span>”</div>${card}`;
+  <div class="banner" id="quoteBanner">“<span id="quoteTxt">${esc(q)}</span>”</div>${card}${vidSec}`;
 }
 
 function rPlan() {
@@ -467,7 +590,13 @@ function rLearn() {
   } else {
     quizCard = `<div class="card"><h2>AI quiz</h2><p class="muted">Fresh questions written for exactly what you've studied. Answer one correctly and it never comes back.</p><button class="btn primary undone" onclick="nextQ()">Get a question</button></div>`;
   }
-  return quizCard + `<div class="card"><h2>This week's resources</h2>
+  const wl = YT[w] || [];
+  const seenCount = wl.filter((_, i) => vidWatched(w, i+1)).length;
+  const vidsCard = wl.length ? `<div class="card"><h2>This week's videos</h2>
+    <p class="muted" style="margin-bottom:6px">${seenCount}/${wl.length} watched · each one matches a day's task</p>
+    ${wl.map((_, i) => vidRow(w, i+1)).join("")}
+  </div>` : "";
+  return quizCard + vidsCard + `<div class="card"><h2>This week's resources</h2>
     ${wk.rs.map(r => `<a class="rsrc" href="${r[2]}" target="_blank"><span>🔗</span><span>${esc(r[0])}<small>${esc(r[1])}</small></span></a>`).join("")}
   </div>
   <div class="card"><h2>On-the-go drills</h2>
@@ -497,7 +626,7 @@ function rSet() {
     <p class="muted" id="pushStatus"></p>
   </div>
   <div class="card"><h2>Data</h2>
-    <p class="muted">Progress: ${stats().done}/96 · pending sync: ${Object.keys(queue).length} · app v2</p>
+    <p class="muted">Progress: ${stats().done}/96 · pending sync: ${Object.keys(queue).length} · app v3</p>
     <button class="btn ghost" onclick="navigator.clipboard.writeText(JSON.stringify(state)); this.textContent='Copied ✓'">Export progress (copy JSON)</button>
   </div>
   <div class="card"><h2>Install as app</h2>
@@ -545,7 +674,7 @@ async function refresh() {
   if (Object.keys(queue).length) { flushQueue(); return; }
   const before = JSON.stringify(state);
   await pull();
-  if (JSON.stringify(state) !== before && tab !== "learn") render();
+  if (JSON.stringify(state) !== before && tab !== "learn" && !document.querySelector(".vframe")) render();
 }
 
 render();
