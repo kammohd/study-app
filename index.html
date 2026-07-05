@@ -76,6 +76,14 @@
   .vrow .vinfo { flex: 1; font-size: 13px; line-height: 1.35; }
   .vrow .vinfo small { display: block; color: #888; font-size: 11px; margin-top: 2px; }
   .vrow.seen .vinfo { color: #999; }
+  .exbadge { width: 34px; height: 34px; min-width: 34px; border-radius: 10px; background: #f1efe9; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+  .exbadge.on { background: #dcfce7; }
+  .pybox { margin-top: 4px; }
+  textarea.pyed { width: 100%; min-height: 170px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; line-height: 1.55; background: #1f2937; color: #e5e7eb; border: none; border-radius: 10px; padding: 12px; margin-top: 8px; resize: vertical; white-space: pre; }
+  pre.pyout { background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: 12px; font-size: 12.5px; font-family: ui-monospace, Menlo, monospace; margin-top: 8px; white-space: pre-wrap; word-break: break-word; }
+  .btnrow { display: flex; gap: 8px; }
+  .btnrow .btn { margin-top: 8px; }
+  .expass { color: #16a34a; font-weight: 700; font-size: 12px; }
   h2 { font-size: 16px; margin-bottom: 10px; }
 </style>
 </head>
@@ -316,6 +324,161 @@ const YT = {
   ["Make your GitHub stand out to recruiters","z8UPAVTh2aE","8:13"]],
 };
 
+// In-app coding exercises (v4). {t: title, q: what to do, c: scaffold, test: hidden checks}
+const EX = {
+ 1: [
+  {t:"Greeting function",
+   q:'Write greet(who) so it returns "Hello " + the name. Replace the ... and hit Check.',
+   c:`def greet(who):
+    # return "Hello " followed by the name
+    return ...
+
+print(greet("Kamran"))`,
+   test:`assert greet("Ana") == "Hello Ana", 'greet("Ana") should return "Hello Ana"'
+assert greet("Omar") == "Hello Omar", 'check the space after Hello'`},
+  {t:"Contact dict",
+   q:"Build make_contact(name, skills): return a dict with keys name, skills, and count (how many skills).",
+   c:`def make_contact(name, skills):
+    # return {"name": ..., "skills": ..., "count": ...}
+    return ...
+
+print(make_contact("Kamran", ["Salesforce", "SOQL"]))`,
+   test:`c = make_contact("Sara", ["Python", "SQL", "Excel"])
+assert c["name"] == "Sara", "the name key is wrong"
+assert c["skills"] == ["Python", "SQL", "Excel"], "the skills key is wrong"
+assert c["count"] == 3, "count should be len(skills)"
+assert make_contact("A", [])["count"] == 0, "count for an empty list should be 0"`},
+  {t:"Loop & filter records",
+   q:"Loop over CRM records and return the names of everyone from the given city, in order.",
+   c:`records = [
+    {"name": "Ali", "city": "Dubai"},
+    {"name": "Sara", "city": "Riyadh"},
+    {"name": "Omar", "city": "Dubai"},
+]
+
+def names_in(records, city):
+    # loop, collect names where record["city"] == city
+    return ...
+
+print(names_in(records, "Dubai"))`,
+   test:`r = [{"name":"A","city":"X"},{"name":"B","city":"Y"},{"name":"C","city":"X"}]
+assert names_in(r, "X") == ["A", "C"], "should collect matching names, in order"
+assert names_in(r, "Z") == [], "no matches should give an empty list"`}],
+ 2: [
+  {t:"Save & read a file",
+   q:"Write save_note(text) to write text into note.txt, and read_note() to return the file's contents.",
+   c:`def save_note(text):
+    # open note.txt for writing ("w") and write the text
+    ...
+
+def read_note():
+    # open note.txt and return its contents
+    return ...
+
+save_note("Week 2 - files done!")
+print(read_note())`,
+   test:`save_note("hello file")
+assert read_note() == "hello file", "read_note should return exactly what was saved"
+save_note("second write")
+assert read_note() == "second write", "writing again should replace the old text"`},
+  {t:"Crash-proof int()",
+   q:"safe_int(s): return int(s) — but if the text isn't a number, return None instead of crashing.",
+   c:`def safe_int(s):
+    # try to convert; except ValueError return None
+    return ...
+
+print(safe_int("42"), safe_int("oops"))`,
+   test:`assert safe_int("42") == 42
+assert safe_int("oops") is None, "bad input should give None, not an error"
+assert safe_int("7") == 7`},
+  {t:"CSV → list of dicts",
+   q:"parse_tickets(text): use csv.DictReader to turn CSV text into a list of dicts (one per row).",
+   c:`import csv, io
+
+data = """id,subject
+1,Login issue
+2,Refund request"""
+
+def parse_tickets(text):
+    # list(csv.DictReader(io.StringIO(text)))
+    return ...
+
+print(parse_tickets(data))`,
+   test:`rows = parse_tickets("id,subject\\n1,Login issue\\n2,Refund request")
+assert len(rows) == 2, "should find 2 rows"
+assert rows[0]["subject"] == "Login issue", "first row's subject is wrong"
+assert rows[1]["id"] == "2", "rows should be dicts keyed by the header"`}],
+ 3: [
+  {t:"Parse the API's JSON",
+   q:"The exchange-rate API replied with this JSON text. Write rate(resp, cur) to parse it and return the rate.",
+   c:`import json
+
+resp = '{"base": "AED", "rates": {"USD": 0.27, "INR": 22.6, "PKR": 75.9}}'
+
+def rate(resp, cur):
+    # json.loads(...), then dig out rates[cur]
+    return ...
+
+print(rate(resp, "USD"))`,
+   test:`r = '{"base": "AED", "rates": {"USD": 0.27, "EUR": 0.25}}'
+assert rate(r, "USD") == 0.27, "should return the number inside rates"
+assert rate(r, "EUR") == 0.25`},
+  {t:"Status code translator",
+   q:'describe(status): 2xx → "success", 3xx → "redirect", 4xx → "client error", 5xx → "server error".',
+   c:`def describe(status):
+    # if/elif on the number ranges
+    return ...
+
+print(describe(200), describe(404), describe(429))`,
+   test:`assert describe(200) == "success"
+assert describe(301) == "redirect"
+assert describe(404) == "client error"
+assert describe(429) == "client error", "429 (rate limit!) is a client error"
+assert describe(500) == "server error"`},
+  {t:"Bearer token headers",
+   q:'auth_headers(key): return the headers dict an authenticated API call needs — Authorization: "Bearer <key>".',
+   c:`def auth_headers(key):
+    # {"Authorization": "Bearer " + key}
+    return ...
+
+print(auth_headers("MY-SECRET-KEY"))`,
+   test:`h = auth_headers("abc123")
+assert h == {"Authorization": "Bearer abc123"}, 'exact format: "Bearer" + space + key'`}],
+ 4: [
+  {t:"Build the CSV text",
+   q:"rows_to_csv(rows): turn [currency, rate] pairs into CSV text with a header — the heart of your Week 4 script.",
+   c:`def rows_to_csv(rows):
+    lines = ["currency,rate"]
+    # loop rows, append f"{row[0]},{row[1]}", then "\\n".join(lines)
+    return ...
+
+print(rows_to_csv([["USD", 0.27], ["INR", 22.6]]))`,
+   test:`out = rows_to_csv([["USD", 0.27], ["INR", 22.6]])
+assert out == "currency,rate\\nUSD,0.27\\nINR,22.6", "header first, one line per row, no trailing newline"
+assert rows_to_csv([]) == "currency,rate", "no rows = just the header"`},
+  {t:"Safe dict lookups",
+   q:"APIs sometimes omit fields. safe_get(d, key, default): return d[key] if it exists, else the default — no crash.",
+   c:`def safe_get(d, key, default):
+    # dicts have a .get(...) method — or use try/except
+    return ...
+
+resp = {"rates": {"USD": 0.27}}
+print(safe_get(resp["rates"], "USD", 0), safe_get(resp["rates"], "EUR", 0))`,
+   test:`assert safe_get({"a": 1}, "a", 0) == 1
+assert safe_get({"a": 1}, "b", 0) == 0, "missing key should give the default"
+assert safe_get({}, "x", "n/a") == "n/a"`},
+  {t:"README generator",
+   q:'readme(title, steps): return Markdown — "# " + title, then numbered steps ("1. ...", "2. ..."), one per line.',
+   c:`def readme(title, steps):
+    lines = ["# " + title]
+    # enumerate(steps, 1) gives (1, step), (2, step)...
+    return ...
+
+print(readme("Rates fetcher", ["Install requests", "Run the script"]))`,
+   test:`out = readme("My tool", ["Install", "Run"])
+assert out == "# My tool\\n1. Install\\n2. Run", "title line, then numbered steps, joined with newlines"`}],
+};
+
 let state = {}, queue = {}, tab = "today";
 let liveQuote = "", quoteBusy = false;
 let curQ = null, qBusy = false, qErr = false, answered = false, qScore = 0;
@@ -438,8 +601,8 @@ function toggleV(wk, d, btn) {
   if (state[id]) { delete state[id]; push(id, null); }
   else { const dt = new Date().toISOString().slice(0,10); state[id] = dt; push(id, dt); }
   save();
-  if (document.querySelector(".vframe")) {
-    // a video is playing — update in place instead of re-rendering (which would kill the player)
+  if (document.querySelector(".vframe") || document.querySelector(".pybox")) {
+    // media/editor open — update in place instead of re-rendering (which would kill it)
     if (btn) { btn.classList.toggle("on", !!state[id]); btn.textContent = state[id] ? "✓ Watched" : "Mark watched"; }
   } else { render(); }
 }
@@ -492,6 +655,132 @@ function expandVid(wk, d) {
     </div></div>`;
 }
 
+// ---- Practice (in-app Python via Pyodide) ----
+let pyodide = null, pyLoading = null, exBusy = false;
+
+function ensurePy() {
+  if (pyodide) return Promise.resolve(pyodide);
+  if (!pyLoading) {
+    pyLoading = new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js";
+      s.onload = res;
+      s.onerror = () => rej(new Error("couldn't download Python — check your connection"));
+      document.head.appendChild(s);
+    }).then(() => loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/" }))
+      .then(p => { pyodide = p; return p; })
+      .catch(e => { pyLoading = null; throw e; });
+  }
+  return pyLoading;
+}
+
+const RUN_PY = `
+import sys, io, traceback
+_buf = io.StringIO()
+_old = sys.stdout
+sys.stdout = _buf
+try:
+    exec(_user_code, {})
+except Exception:
+    traceback.print_exc(file=_buf)
+sys.stdout = _old
+_buf.getvalue()
+`;
+
+const CHECK_PY = `
+import sys, io, traceback, json as _json
+_buf = io.StringIO()
+_old = sys.stdout
+sys.stdout = _buf
+_ns = {}
+_ok = False
+_msg = ""
+try:
+    exec(_user_code, _ns)
+    exec(_test_code, _ns)
+    _ok = True
+except AssertionError as _e:
+    _msg = str(_e) or "one of the checks failed"
+except Exception:
+    _msg = traceback.format_exc().strip().split(chr(10))[-1]
+sys.stdout = _old
+_json.dumps({"ok": _ok, "msg": _msg, "out": _buf.getvalue()})
+`;
+
+function exSolved(wk, i) { return !!state["w" + wk + "e" + i]; }
+
+async function runEx(wk, i, mode) {
+  if (exBusy) return;
+  const ta = document.getElementById("pyed_" + wk + "_" + i);
+  const out = document.getElementById("pyout_" + wk + "_" + i);
+  if (!ta || !out) return;
+  exBusy = true;
+  out.style.display = "block";
+  try {
+    if (!pyodide) out.textContent = "⏳ Loading Python (~10 MB the first time, instant after)…";
+    const py = await ensurePy();
+    py.globals.set("_user_code", ta.value);
+    if (mode === "run") {
+      out.textContent = "▶ running…";
+      const res = await py.runPythonAsync(RUN_PY);
+      out.textContent = (res && res.trim()) ? res.slice(0, 2000) : "(no output — add a print())";
+    } else {
+      py.globals.set("_test_code", EX[wk][i].test);
+      out.textContent = "🧪 checking…";
+      const res = JSON.parse(await py.runPythonAsync(CHECK_PY));
+      if (res.ok) {
+        out.textContent = (res.out ? res.out.slice(0, 800) + "\n" : "") + "✅ All checks passed!";
+        const id = "w" + wk + "e" + i;
+        if (!state[id]) { const dt = new Date().toISOString().slice(0, 10); state[id] = dt; push(id, dt); save(); }
+        const st = document.getElementById("pyst_" + wk + "_" + i);
+        if (st) { st.textContent = "✓ solved"; st.className = "expass"; }
+      } else {
+        out.textContent = ((res.out ? res.out.slice(0, 800) + "\n" : "") + "❌ " + res.msg).slice(0, 2000);
+      }
+    }
+  } catch (e) { out.textContent = "⚠️ " + e.message; }
+  exBusy = false;
+}
+
+function pyTab(e) {
+  if (e.key === "Tab") {
+    e.preventDefault();
+    const t = e.target, s = t.selectionStart;
+    t.value = t.value.slice(0, s) + "    " + t.value.slice(t.selectionEnd);
+    t.selectionStart = t.selectionEnd = s + 4;
+  }
+}
+
+function exRow(wk, i) {
+  const ex = (EX[wk] || [])[i]; if (!ex) return "";
+  const done = exSolved(wk, i);
+  return `<div class="vrow ${done?'seen':''}" onclick="openEx(${wk},${i})" id="exr_${wk}_${i}">
+    <div class="exbadge ${done?'on':''}">${done?'✓':'⌨️'}</div>
+    <div class="vinfo">${esc(ex.t)}<small>${done?'solved ✓ · tap to redo':'tap to solve — right here'}</small></div></div>`;
+}
+
+function exBox(wk, i) {
+  const ex = EX[wk][i];
+  const done = exSolved(wk, i);
+  return `<div class="pybox" id="exb_${wk}_${i}">
+    <div class="vmeta" style="padding:0 0 6px"><span class="vtitle">⌨️ ${esc(ex.t)} <span id="pyst_${wk}_${i}" class="expass">${done?'✓ solved':''}</span></span>
+      <button class="vtick" onclick="closeEx()">✕ close</button></div>
+    <p class="muted">${esc(ex.q)}</p>
+    <textarea class="pyed" id="pyed_${wk}_${i}" spellcheck="false" autocapitalize="off" autocorrect="off" onkeydown="pyTab(event)">${esc(ex.c)}</textarea>
+    <div class="btnrow">
+      <button class="btn ghost" onclick="runEx(${wk},${i},'run')">▶ Run</button>
+      <button class="btn primary undone" onclick="runEx(${wk},${i},'check')">🧪 Check</button>
+    </div>
+    <pre class="pyout" id="pyout_${wk}_${i}" style="display:none"></pre>
+  </div>`;
+}
+
+function openEx(wk, i) {
+  const row = document.getElementById("exr_" + wk + "_" + i);
+  if (row) row.outerHTML = exBox(wk, i);
+}
+function closeEx() { render(); }
+
 function render() {
   const v = document.getElementById("view");
   ["today","plan","learn","set"].forEach(t => document.getElementById("nav-"+t).className = t===tab ? "act" : "");
@@ -535,12 +824,23 @@ function rToday() {
       vidSec = `<div class="card"><div class="muted">🎬 All of week ${vw}'s videos watched 🔥 Rewatch any in Learn, or grab a quiz.</div></div>`;
     }
   }
+  let exSec = "";
+  if (!t.done) {
+    const ew = t.pre ? 1 : (t.week || curWeek());
+    const list = EX[ew] || [];
+    if (list.length) {
+      const solvedN = list.filter((_, i) => exSolved(ew, i)).length;
+      const next = list.findIndex((_, i) => !exSolved(ew, i));
+      exSec = `<div class="card"><div class="muted" style="margin-bottom:4px">⌨️ Hands-on · ${solvedN}/${list.length} solved this week · runs on your phone</div>
+      ${next >= 0 ? exRow(ew, next) : `<p class="muted">All solved this week 💪 Redo any from the Learn tab.</p>`}</div>`;
+    }
+  }
   return `<div class="statrow">
     <div class="stat"><b>${s.streak}</b><span>streak</span></div>
     <div class="stat"><b>${s.done}/${s.total}</b><span>sessions</span></div>
     <div class="stat"><b>${s.pct}%</b><span>complete</span></div>
   </div>
-  <div class="banner" id="quoteBanner">“<span id="quoteTxt">${esc(q)}</span>”</div>${card}${vidSec}`;
+  <div class="banner" id="quoteBanner">“<span id="quoteTxt">${esc(q)}</span>”</div>${card}${vidSec}${exSec}`;
 }
 
 function rPlan() {
@@ -596,7 +896,12 @@ function rLearn() {
     <p class="muted" style="margin-bottom:6px">${seenCount}/${wl.length} watched · each one matches a day's task</p>
     ${wl.map((_, i) => vidRow(w, i+1)).join("")}
   </div>` : "";
-  return quizCard + vidsCard + `<div class="card"><h2>This week's resources</h2>
+  const exl = EX[w] || [];
+  const exCard = exl.length ? `<div class="card"><h2>Hands-on practice</h2>
+    <p class="muted" style="margin-bottom:6px">${exl.filter((_, i) => exSolved(w, i)).length}/${exl.length} solved · real Python, right in the app</p>
+    ${exl.map((_, i) => exRow(w, i)).join("")}
+  </div>` : "";
+  return quizCard + exCard + vidsCard + `<div class="card"><h2>This week's resources</h2>
     ${wk.rs.map(r => `<a class="rsrc" href="${r[2]}" target="_blank"><span>🔗</span><span>${esc(r[0])}<small>${esc(r[1])}</small></span></a>`).join("")}
   </div>
   <div class="card"><h2>On-the-go drills</h2>
@@ -626,7 +931,7 @@ function rSet() {
     <p class="muted" id="pushStatus"></p>
   </div>
   <div class="card"><h2>Data</h2>
-    <p class="muted">Progress: ${stats().done}/96 · pending sync: ${Object.keys(queue).length} · app v3</p>
+    <p class="muted">Progress: ${stats().done}/96 · pending sync: ${Object.keys(queue).length} · app v4</p>
     <button class="btn ghost" onclick="navigator.clipboard.writeText(JSON.stringify(state)); this.textContent='Copied ✓'">Export progress (copy JSON)</button>
   </div>
   <div class="card"><h2>Install as app</h2>
@@ -674,7 +979,7 @@ async function refresh() {
   if (Object.keys(queue).length) { flushQueue(); return; }
   const before = JSON.stringify(state);
   await pull();
-  if (JSON.stringify(state) !== before && tab !== "learn" && !document.querySelector(".vframe")) render();
+  if (JSON.stringify(state) !== before && tab !== "learn" && !document.querySelector(".vframe") && !document.querySelector(".pybox")) render();
 }
 
 render();

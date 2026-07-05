@@ -1,5 +1,7 @@
 // Service worker — lives on the phone, shows notifications even when
 // the app is closed. Installed automatically by index.html.
+// Also caches the Pyodide (in-app Python) runtime so practice works
+// offline and loads instantly after the first download.
 
 self.addEventListener("push", function (e) {
   let data = { title: "AI Study", body: "Time to study." };
@@ -25,4 +27,19 @@ self.addEventListener("notificationclick", function (e) {
   );
 });
 
-self.addEventListener("fetch", function () {});
+// Cache-first for the Python runtime (~10 MB, downloaded once).
+const PY_CACHE = "pyodide-v1";
+self.addEventListener("fetch", function (e) {
+  if (e.request.url.includes("cdn.jsdelivr.net/pyodide/")) {
+    e.respondWith(
+      caches.open(PY_CACHE).then(function (cache) {
+        return cache.match(e.request).then(function (hit) {
+          return hit || fetch(e.request).then(function (resp) {
+            if (resp.ok) cache.put(e.request, resp.clone());
+            return resp;
+          });
+        });
+      })
+    );
+  }
+});
