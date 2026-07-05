@@ -947,7 +947,9 @@ async function pull() {
     const r = await fetch(cfg() + "?t=" + Date.now());
     const remote = await r.json();
     Object.entries(remote).forEach(([k, v]) => { if (v && !(k in queue)) state[k] = v; });
-    Object.keys(state).forEach(k => { if (!(k in remote) && !(k in queue)) delete state[k]; });
+    // delete-cleanup applies to real task ids only — video (wNvD) and exercise (wNeI)
+    // marks are local-first and must never be wiped by a backend that doesn't store them
+    Object.keys(state).forEach(k => { if (/^w\d+t\d+$/.test(k) && !(k in remote) && !(k in queue)) delete state[k]; });
     save(); setDot("ok", "synced"); flushQueue();
   } catch(e) { setDot("err", "sync failed"); }
 }
@@ -1285,27 +1287,46 @@ function rToday() {
   const t = todayInfo(), s = stats();
   const q = liveQuote || QUOTES[Math.floor(Date.now()/864e5) % QUOTES.length];
   let card;
+  let dispW = 0, dispD = 0;
   if (t.pre) card = `<div class="card"><h2>Starts Monday, 6 July</h2><p class="muted">Week 1, day 1: install Python — or just open Colab and skip the install entirely.</p></div>`;
   else if (t.done) card = `<div class="card"><h2>Program complete 🎉</h2><p class="muted">16 weeks done. Time for AI-102 and job applications.</p></div>`;
   else if (t.rest) card = `<div class="card"><h2>Sunday — rest day</h2><p class="muted">Week ${t.week} of 16. Recharge; Monday continues the plan. Feeling keen? Take a quiz in Learn.</p></div>`;
   else {
-    const wk = W[t.week-1];
-    const done = !!state[t.id];
-    card = `<div class="card">
-      <div class="muted">Week ${t.week} of 16 · ${esc(wk.th)} · Day ${t.dow}</div>
-      <h2 style="margin:8px 0 6px">${esc(t.task)}</h2>
-      <span class="chip ${t.phone?'':'pc'}">${t.phone ? "📱 phone-friendly" : "💻 best on PC"}</span>
+    const todayDone = !!state[t.id];
+    let show = todayDone ? null : t;
+    if (todayDone) {
+      // work-ahead mode: find the next undone task in the plan
+      outer:
+      for (let w = t.week; w <= 16; w++) {
+        for (let d = (w === t.week ? t.dow + 1 : 1); d <= 6; d++) {
+          const id = "w" + w + "t" + (d - 1);
+          if (!state[id]) { show = { week: w, dow: d, task: W[w-1].ts[d-1], phone: W[w-1].ph[d-1] === "p", id: id }; break outer; }
+        }
+      }
+    }
+    if (!show) {
+      card = `<div class="card"><h2>Everything's ticked 🎉</h2><p class="muted">You're ahead of the entire plan. Take a quiz in Learn — or rest, you've earned it.</p></div>`;
+    } else {
+      dispW = show.week; dispD = show.dow;
+      const wk = W[show.week-1];
+      const aheadBar = todayDone ? `<div class="muted" style="margin-bottom:8px">✓ Today's task done (<span onclick="toggle('${t.id}')" style="color:#b45309;text-decoration:underline;cursor:pointer">undo</span>) · working ahead ⚡</div>` : "";
+      card = `<div class="card">
+      ${aheadBar}
+      <div class="muted">Week ${show.week} of 16 · ${esc(wk.th)} · Day ${show.dow}${todayDone ? " · next up" : ""}</div>
+      <h2 style="margin:8px 0 6px">${esc(show.task)}</h2>
+      <span class="chip ${show.phone?'':'pc'}">${show.phone ? "📱 phone-friendly" : "💻 best on PC"}</span>
       ${wk.code ? `<a class="btn colab" href="${COLAB}" target="_blank">▶ Open Google Colab</a>
-      <button class="btn ghost" onclick="copyCode(${t.week-1}, this)">📋 Copy this week's starter code</button>
+      <button class="btn ghost" onclick="copyCode(${show.week-1}, this)">📋 Copy this week's starter code</button>
       <pre class="code">${esc(wk.code)}</pre>` : ""}
-      ${!t.phone ? `<p class="muted" style="margin-top:10px">Phone-only tonight? Run the starter code in Colab, or take a quiz in Learn — the PC part can wait for the weekend.</p>` : ""}
-      <button class="btn primary ${done?'':'undone'}" onclick="toggle('${t.id}')">${done ? "✓ Done — tap to undo" : "Mark today done"}</button>
+      ${!show.phone ? `<p class="muted" style="margin-top:10px">Phone-only tonight? Run the starter code in Colab, or take a quiz in Learn — the PC part can wait for the weekend.</p>` : ""}
+      <button class="btn primary undone" onclick="toggle('${show.id}')">${todayDone ? "Mark this one done too ⚡" : "Mark today done"}</button>
     </div>`;
+    }
   }
   let vidSec = "";
   if (!t.done) {
-    const vw = t.pre ? 1 : (t.week || curWeek());
-    const pd = t.dow || 0;
+    const vw = t.pre ? 1 : (dispW || t.week || curWeek());
+    const pd = dispD || t.dow || 0;
     const pick = pickVid(vw, pd);
     if (pick > 0) {
       const label = t.pre ? "🎬 Get a head start" : (t.rest ? "🎬 Optional Sunday watch" : (pick === pd ? "🎬 Today's watch" : "🎬 Catch-up watch"));
@@ -1316,7 +1337,7 @@ function rToday() {
   }
   let exSec = "";
   if (!t.done) {
-    const ew = t.pre ? 1 : (t.week || curWeek());
+    const ew = t.pre ? 1 : (dispW || t.week || curWeek());
     const list = EX[ew] || [];
     if (list.length) {
       const solvedN = list.filter((_, i) => exSolved(ew, i)).length;
@@ -1421,7 +1442,7 @@ function rSet() {
     <p class="muted" id="pushStatus"></p>
   </div>
   <div class="card"><h2>Data</h2>
-    <p class="muted">Progress: ${stats().done}/96 · pending sync: ${Object.keys(queue).length} · app v5</p>
+    <p class="muted">Progress: ${stats().done}/96 · pending sync: ${Object.keys(queue).length} · app v6</p>
     <button class="btn ghost" onclick="navigator.clipboard.writeText(JSON.stringify(state)); this.textContent='Copied ✓'">Export progress (copy JSON)</button>
   </div>
   <div class="card"><h2>Install as app</h2>
