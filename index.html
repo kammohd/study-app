@@ -1038,6 +1038,7 @@ function answerQ(btn, i) {
   answered = true;
   const right = Number(curQ.correct);
   document.querySelectorAll(".quizopt").forEach((b, j) => { if (j === right) b.classList.add("right"); });
+  track("quiz", curQ.question, i === right, curWeek());
   if (i !== right) { btn.classList.add("wrong"); }
   else {
     qScore++;
@@ -1062,6 +1063,25 @@ function stats() {
 }
 
 function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+
+// ---- Learning signal: record every right/wrong attempt ----
+function track(kind, ref, ok, wk) {
+  let a = {}; try { a = JSON.parse(localStorage.getItem("attempts")) || {}; } catch(e) {}
+  const k = "w" + wk;
+  a[k] = a[k] || { r: 0, w: 0 };
+  ok ? a[k].r++ : a[k].w++;
+  localStorage.setItem("attempts", JSON.stringify(a));
+  // fire-and-forget permanent record in the Sheet ("attempts" tab)
+  if (cfg()) fetch(cfg(), { method: "POST", body: JSON.stringify({ attempt: { date: localDate(), week: wk, kind: kind, ref: String(ref).slice(0, 80), ok: ok ? 1 : 0 } }) }).catch(() => {});
+}
+
+function accStats(w) {
+  let a = {}; try { a = JSON.parse(localStorage.getItem("attempts")) || {}; } catch(e) {}
+  const wk = a["w" + w] || { r: 0, w: 0 };
+  let tr = 0, tw = 0;
+  Object.values(a).forEach(v => { tr += v.r; tw += v.w; });
+  return { wr: wk.r, ww: wk.w, tr: tr, tw: tw };
+}
 
 // ---- Videos ----
 function vidWatched(wk, d) { return !!state["w" + wk + "v" + d]; }
@@ -1202,6 +1222,7 @@ async function runEx(wk, i, mode) {
       py.globals.set("_test_code", EX[wk][i].test);
       out.textContent = "🧪 checking…";
       const res = JSON.parse(await py.runPythonAsync(CHECK_PY));
+      track(EX[wk][i].ai ? "challenge" : "exercise", EX[wk][i].t, !!res.ok, wk);
       if (res.ok) {
         out.textContent = (res.out ? res.out.slice(0, 800) + "\n" : "") + "✅ All checks passed!";
         markSolved(wk, i);
@@ -1288,6 +1309,7 @@ async function gradeEx(wk, i) {
     const r = await fetch(cfg(), { method: "POST", body: JSON.stringify({ grade: { task: EX[wk][i].q, answer: ta.value } }) });
     const d = await r.json();
     if (typeof d.ok === "undefined" && !d.feedback) throw new Error("backend");
+    track("graded", EX[wk][i].t, !!d.ok, wk);
     out.textContent = (d.ok ? "✅ Passed! " : "🔁 Not yet. ") + (d.feedback || "");
     if (d.ok) markSolved(wk, i);
   } catch (e) {
@@ -1483,7 +1505,12 @@ function rLearn() {
     ${exl.map((_, i) => exRow(w, i)).join("")}
     <button class="btn ghost" onclick="newChallenge(${w}, this)">✨ New AI challenge</button>
   </div>` : "";
-  return quizCard + exCard + vidsCard + `<div class="card"><h2>This week's resources</h2>
+  const ac = accStats(w);
+  const accCard = (ac.tr + ac.tw) ? `<div class="card"><h2>📈 Learning signal</h2>
+    <p class="muted">This week: <b>${ac.wr}✓ ${ac.ww}✗</b>${(ac.wr+ac.ww) ? " — " + Math.round(ac.wr/(ac.wr+ac.ww)*100) + "% right" : ""}<br>
+    All time: ${ac.tr}✓ ${ac.tw}✗ — ${Math.round(ac.tr/(ac.tr+ac.tw)*100)}% across quizzes, exercises & challenges. Every attempt also lands in the Sheet's <b>attempts</b> tab for the long view.</p>
+  </div>` : "";
+  return quizCard + accCard + exCard + vidsCard + `<div class="card"><h2>This week's resources</h2>
     ${wk.rs.map(r => `<a class="rsrc" href="${r[2]}" target="_blank"><span>🔗</span><span>${esc(r[0])}<small>${esc(r[1])}</small></span></a>`).join("")}
   </div>
   <div class="card"><h2>On-the-go drills</h2>
@@ -1494,6 +1521,7 @@ function rLearn() {
 
 function answerStatic(btn, i, right) {
   document.querySelectorAll(".quizopt").forEach((b, j) => { if (j === right) b.classList.add("right"); });
+  track("quiz", "offline set", i === right, curWeek());
   if (i !== right) btn.classList.add("wrong");
   document.querySelectorAll(".quizopt").forEach(b => b.onclick = null);
 }
@@ -1513,7 +1541,7 @@ function rSet() {
     <p class="muted" id="pushStatus"></p>
   </div>
   <div class="card"><h2>Data</h2>
-    <p class="muted">Progress: ${stats().done}/96 · pending sync: ${Object.keys(queue).length} · app v8</p>
+    <p class="muted">Progress: ${stats().done}/96 · pending sync: ${Object.keys(queue).length} · app v9</p>
     <button class="btn ghost" onclick="navigator.clipboard.writeText(JSON.stringify(state)); this.textContent='Copied ✓'">Export progress (copy JSON)</button>
   </div>
   <div class="card"><h2>Install as app</h2>
