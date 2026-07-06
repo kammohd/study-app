@@ -945,6 +945,29 @@ function todayInfo() {
   return { week, dow, task: W[week-1].ts[dow-1], phone: W[week-1].ph[dow-1] === "p", id: "w" + week + "t" + (dow-1) };
 }
 
+// Your actual learning position: the first undone lesson in the plan.
+// The Today tab follows THIS, not the calendar.
+function position() {
+  for (let w = 1; w <= 16; w++) {
+    for (let d = 1; d <= 6; d++) {
+      const id = "w" + w + "t" + (d - 1);
+      if (!state[id]) return { week: w, dow: d, task: W[w-1].ts[d-1], phone: W[w-1].ph[d-1] === "p", id: id };
+    }
+  }
+  return null; // everything ticked
+}
+
+// How many study sessions (Mon–Sat) the calendar expects by today.
+function expectedSessions() {
+  const d = Math.floor((new Date() - START) / 864e5);
+  if (d < 0) return 0;
+  let n = 0;
+  for (let i = 0; i <= Math.min(d, 111); i++) {
+    if (new Date(START.getTime() + i * 864e5).getDay() !== 0) n++;
+  }
+  return Math.min(n, 96);
+}
+
 function setDot(cls, lbl) { const d = document.getElementById("syncDot"); d.className = "dot " + cls; document.getElementById("syncLbl").textContent = lbl; }
 
 async function pull() {
@@ -1154,7 +1177,11 @@ sys.stdout = _old
 _json.dumps({"ok": _ok, "msg": _msg, "out": _buf.getvalue()})
 `;
 
-function exSolved(wk, i) { return !!state["w" + wk + "e" + i]; }
+function exSolved(wk, i) {
+  const ex = (EX[wk] || [])[i];
+  if (ex && ex.ai) return !!ex.done;        // AI extras are session-scoped
+  return !!state["w" + wk + "e" + i];
+}
 
 async function runEx(wk, i, mode) {
   if (exBusy) return;
@@ -1196,10 +1223,56 @@ function pyTab(e) {
 }
 
 function markSolved(wk, i) {
-  const id = "w" + wk + "e" + i;
-  if (!state[id]) { const dt = localDate(); state[id] = dt; push(id, dt); save(); }
+  const ex = (EX[wk] || [])[i];
+  if (ex && ex.ai) {
+    if (!ex.done) {
+      ex.done = 1;
+      localStorage.setItem("aiSolved", (parseInt(localStorage.getItem("aiSolved")) || 0) + 1);
+    }
+  } else {
+    const id = "w" + wk + "e" + i;
+    if (!state[id]) { const dt = localDate(); state[id] = dt; push(id, dt); save(); }
+  }
   const st = document.getElementById("pyst_" + wk + "_" + i);
   if (st) { st.textContent = "✓ solved"; st.className = "expass"; }
+}
+
+// ✨ Endless AI challenges — same idea as the AI quiz, but for code.
+// Backend generates {title, brief, scaffold, test, solution}; before showing it,
+// the reference solution is run against the tests in Pyodide — a broken
+// generation is discarded and re-requested. Never trust ungraded generation.
+let chBusy = false;
+async function newChallenge(wk, btn) {
+  if (chBusy) return;
+  if (!cfg()) { if (btn) btn.textContent = "Connect sync first (⚙ Sync tab)"; return; }
+  chBusy = true;
+  const orig = btn ? btn.textContent : "";
+  try {
+    if (btn) btn.textContent = "⏳ Loading Python…";
+    const py = await ensurePy();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (btn) btn.textContent = "✨ Writing you a challenge…";
+      const doneTasks = W[wk-1].ts.filter((_, i) => state["w" + wk + "t" + i]);
+      const avoid = (EX[wk] || []).map(e => e.t);
+      const r = await fetch(cfg(), { method: "POST", body: JSON.stringify({
+        challenge: "next", week: wk, theme: W[wk-1].th, done: doneTasks, avoid: avoid }) });
+      const d = await r.json();
+      if (!d.scaffold || !d.test || !d.solution) throw new Error(d.error ? String(d.error).slice(0, 60) : "backend");
+      py.globals.set("_user_code", d.solution);
+      py.globals.set("_test_code", d.test);
+      const chk = JSON.parse(await py.runPythonAsync(CHECK_PY));
+      if (!chk.ok) continue; // AI generated a broken exercise — regenerate
+      EX[wk].push({ t: d.title || "AI challenge", q: d.brief || "Solve it so the checks pass.", c: d.scaffold, test: d.test, ai: 1 });
+      chBusy = false;
+      render();
+      openEx(wk, EX[wk].length - 1);
+      return;
+    }
+    throw new Error("got two broken generations — try again");
+  } catch (e) {
+    if (btn) { btn.textContent = (e.message === "backend") ? "⚠️ Backend update needed (challenge route)" : "⚠️ " + e.message; setTimeout(() => { btn.textContent = orig; }, 4000); }
+  }
+  chBusy = false;
 }
 
 async function gradeEx(wk, i) {
@@ -1251,8 +1324,8 @@ function exRow(wk, i) {
   const ex = (EX[wk] || [])[i]; if (!ex) return "";
   const done = exSolved(wk, i);
   return `<div class="vrow ${done?'seen':''}" onclick="openEx(${wk},${i})" id="exr_${wk}_${i}">
-    <div class="exbadge ${done?'on':''}">${done?'✓':(ex.g?'🧠':'⌨️')}</div>
-    <div class="vinfo">${esc(ex.t)}<small>${done?'solved ✓ · tap to redo':(ex.g?'AI-graded · answer in-app':'tap to solve — right here')}</small></div></div>`;
+    <div class="exbadge ${done?'on':''}">${done?'✓':(ex.ai?'✨':(ex.g?'🧠':'⌨️'))}</div>
+    <div class="vinfo">${esc(ex.t)}<small>${done?'solved ✓ · tap to redo':(ex.ai?'AI challenge · fresh for you':(ex.g?'AI-graded · answer in-app':'tap to solve — right here'))}</small></div></div>`;
 }
 
 function exBox(wk, i) {
@@ -1294,62 +1367,52 @@ function rToday() {
   const q = liveQuote || QUOTES[Math.floor(Date.now()/864e5) % QUOTES.length];
   let card;
   let dispW = 0, dispD = 0;
-  if (t.pre) card = `<div class="card"><h2>Starts Monday, 6 July</h2><p class="muted">Week 1, day 1: install Python — or just open Colab and skip the install entirely.</p></div>`;
-  else if (t.done) card = `<div class="card"><h2>Program complete 🎉</h2><p class="muted">16 weeks done. Time for AI-102 and job applications.</p></div>`;
-  else if (t.rest) card = `<div class="card"><h2>Sunday — rest day</h2><p class="muted">Week ${t.week} of 16. Recharge; Monday continues the plan. Feeling keen? Take a quiz in Learn.</p></div>`;
-  else {
-    const todayDone = !!state[t.id];
-    let show = todayDone ? null : t;
-    if (todayDone) {
-      // work-ahead mode: find the next undone task in the plan
-      outer:
-      for (let w = t.week; w <= 16; w++) {
-        for (let d = (w === t.week ? t.dow + 1 : 1); d <= 6; d++) {
-          const id = "w" + w + "t" + (d - 1);
-          if (!state[id]) { show = { week: w, dow: d, task: W[w-1].ts[d-1], phone: W[w-1].ph[d-1] === "p", id: id }; break outer; }
-        }
-      }
-    }
-    if (!show) {
-      card = `<div class="card"><h2>Everything's ticked 🎉</h2><p class="muted">You're ahead of the entire plan. Take a quiz in Learn — or rest, you've earned it.</p></div>`;
-    } else {
-      dispW = show.week; dispD = show.dow;
-      const wk = W[show.week-1];
-      const aheadBar = todayDone ? `<div class="muted" style="margin-bottom:8px">✓ Today's task done (<span onclick="toggle('${t.id}')" style="color:#b45309;text-decoration:underline;cursor:pointer">undo</span>) · working ahead ⚡</div>` : "";
-      card = `<div class="card">
-      ${aheadBar}
-      <div class="muted">Week ${show.week} of 16 · ${esc(wk.th)} · Day ${show.dow}${todayDone ? " · next up" : ""}</div>
-      <h2 style="margin:8px 0 6px">${esc(show.task)}</h2>
-      <span class="chip ${show.phone?'':'pc'}">${show.phone ? "📱 phone-friendly" : "💻 best on PC"}</span>
+  const pos = position();
+  if (!pos) {
+    card = `<div class="card"><h2>Everything's ticked 🎉</h2><p class="muted">All 96 sessions done. Take a quiz in Learn, generate an AI challenge — or rest, you've earned it.</p></div>`;
+  } else {
+    dispW = pos.week; dispD = pos.dow;
+    const wk = W[pos.week-1];
+    const delta = s.done - expectedSessions();
+    const pace = t.pre ? `<span class="chip" style="background:#dcfce7;color:#166534">🚀 head start</span>`
+      : delta > 0 ? `<span class="chip" style="background:#dcfce7;color:#166534">⚡ ${delta} ahead</span>`
+      : delta === 0 ? `<span class="chip" style="background:#dcfce7;color:#166534">✓ on track</span>`
+      : `<span class="chip pc">⏳ ${-delta} behind · one session catches up</span>`;
+    const topNote = t.pre ? `<p class="muted" style="margin-bottom:8px">Program starts Monday 6 July — or start right now:</p>`
+      : t.rest ? `<p class="muted" style="margin-bottom:8px">☀️ Sunday — rest day. Everything below is optional; it'll wait for Monday.</p>` : "";
+    card = `<div class="card">
+      ${topNote}
+      <div class="muted">Week ${pos.week} of 16 · ${esc(wk.th)} · Lesson ${pos.dow} of 6 ${pace}</div>
+      <h2 style="margin:8px 0 6px">${esc(pos.task)}</h2>
+      <span class="chip ${pos.phone?'':'pc'}">${pos.phone ? "📱 phone-friendly" : "💻 best on PC"}</span>
       ${wk.code ? `<a class="btn colab" href="${COLAB}" target="_blank">▶ Open Google Colab</a>
-      <button class="btn ghost" onclick="copyCode(${show.week-1}, this)">📋 Copy this week's starter code</button>
+      <button class="btn ghost" onclick="copyCode(${pos.week-1}, this)">📋 Copy this week's starter code</button>
       <pre class="code">${esc(wk.code)}</pre>` : ""}
-      ${!show.phone ? `<p class="muted" style="margin-top:10px">Phone-only tonight? Run the starter code in Colab, or take a quiz in Learn — the PC part can wait for the weekend.</p>` : ""}
-      <button class="btn primary undone" onclick="toggle('${show.id}')">${todayDone ? "Mark this one done too ⚡" : "Mark today done"}</button>
+      ${!pos.phone ? `<p class="muted" style="margin-top:10px">Phone-only tonight? Run the starter code in Colab, or take a quiz in Learn — the PC part can wait for the weekend.</p>` : ""}
+      <button class="btn primary undone" onclick="toggle('${pos.id}')">Mark lesson done</button>
     </div>`;
-    }
   }
   let vidSec = "";
-  if (!t.done) {
-    const vw = t.pre ? 1 : (dispW || t.week || curWeek());
-    const pd = dispD || t.dow || 0;
+  if (dispW) {
+    const vw = dispW;
+    const pd = dispD;
     const pick = pickVid(vw, pd);
     if (pick > 0) {
-      const label = t.pre ? "🎬 Get a head start" : (t.rest ? "🎬 Optional Sunday watch" : (pick === pd ? "🎬 Today's watch" : "🎬 Catch-up watch"));
+      const label = t.rest ? "🎬 Optional Sunday watch" : (pick === pd ? "🎬 This lesson's watch" : "🎬 Catch-up watch");
       vidSec = `<div class="card"><div class="muted" style="margin-bottom:4px">${label} · ${(YT[vw][pick-1]||[])[2] || ""}</div>${vidCard(vw, pick)}</div>`;
     } else if (pick === -1) {
       vidSec = `<div class="card"><div class="muted">🎬 All of week ${vw}'s videos watched 🔥 Rewatch any in Learn, or grab a quiz.</div></div>`;
     }
   }
   let exSec = "";
-  if (!t.done) {
-    const ew = t.pre ? 1 : (dispW || t.week || curWeek());
+  if (dispW) {
+    const ew = dispW;
     const list = EX[ew] || [];
     if (list.length) {
       const solvedN = list.filter((_, i) => exSolved(ew, i)).length;
       const next = list.findIndex((_, i) => !exSolved(ew, i));
       exSec = `<div class="card"><div class="muted" style="margin-bottom:4px">⌨️ Hands-on · ${solvedN}/${list.length} solved this week · runs on your phone</div>
-      ${next >= 0 ? exRow(ew, next) : `<p class="muted">All solved this week 💪 Redo any from the Learn tab.</p>`}</div>`;
+      ${next >= 0 ? exRow(ew, next) : `<button class="btn ghost" onclick="newChallenge(${ew}, this)">✨ All solved 💪 — generate a fresh AI challenge</button>`}</div>`;
     }
   }
   return `<div class="statrow">
@@ -1414,9 +1477,11 @@ function rLearn() {
     ${wl.map((_, i) => vidRow(w, i+1)).join("")}
   </div>` : "";
   const exl = EX[w] || [];
+  const aiN = parseInt(localStorage.getItem("aiSolved")) || 0;
   const exCard = exl.length ? `<div class="card"><h2>Hands-on practice</h2>
-    <p class="muted" style="margin-bottom:6px">${exl.filter((_, i) => exSolved(w, i)).length}/${exl.length} solved · real Python, right in the app</p>
+    <p class="muted" style="margin-bottom:6px">${exl.filter((_, i) => exSolved(w, i)).length}/${exl.length} solved · real Python, right in the app${aiN ? ` · ✨ ${aiN} AI extras` : ""}</p>
     ${exl.map((_, i) => exRow(w, i)).join("")}
+    <button class="btn ghost" onclick="newChallenge(${w}, this)">✨ New AI challenge</button>
   </div>` : "";
   return quizCard + exCard + vidsCard + `<div class="card"><h2>This week's resources</h2>
     ${wk.rs.map(r => `<a class="rsrc" href="${r[2]}" target="_blank"><span>🔗</span><span>${esc(r[0])}<small>${esc(r[1])}</small></span></a>`).join("")}
@@ -1448,7 +1513,7 @@ function rSet() {
     <p class="muted" id="pushStatus"></p>
   </div>
   <div class="card"><h2>Data</h2>
-    <p class="muted">Progress: ${stats().done}/96 · pending sync: ${Object.keys(queue).length} · app v6</p>
+    <p class="muted">Progress: ${stats().done}/96 · pending sync: ${Object.keys(queue).length} · app v8</p>
     <button class="btn ghost" onclick="navigator.clipboard.writeText(JSON.stringify(state)); this.textContent='Copied ✓'">Export progress (copy JSON)</button>
   </div>
   <div class="card"><h2>Install as app</h2>
