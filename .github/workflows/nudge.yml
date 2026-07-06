@@ -2,9 +2,14 @@ name: Study nudge
 
 on:
   schedule:
-    - cron: "0 16 * * 1-6"
-    - cron: "0 17 * * 1-6"
+    - cron: "0 16 * * 1-6"   # 8pm Dubai — motivational nudge (stage 1)
+    - cron: "0 17 * * 1-6"   # 9pm Dubai — follow-up, only if nothing ticked (stage 2)
   workflow_dispatch:
+    inputs:
+      stage:
+        description: "1 = 8pm nudge (always sends), 2 = 9pm follow-up (only if idle)"
+        default: "1"
+        required: false
 
 jobs:
   send:
@@ -20,3 +25,7 @@ jobs:
           EXEC_URL: ${{ secrets.EXEC_URL }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           APP_URL: https://kammohd.github.io/study-app/
+          # Delay-proof: derive the stage from WHICH cron fired, not from the clock.
+          # GitHub cron regularly runs 30-120 min late; the old hour-based guess turned
+          # a late 8pm run into a 9pm "only if idle" run -> silent evenings.
+          STAGE: ${{ github.event_name == 'workflow_dispatch' && (inputs.stage || '1') || (github.event.schedule == '0 16 * * 1-6' && '1' || '2') }}
