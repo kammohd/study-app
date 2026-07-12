@@ -1040,7 +1040,11 @@ function answerQ(btn, i) {
   const right = Number(curQ.correct);
   document.querySelectorAll(".quizopt").forEach((b, j) => { if (j === right) b.classList.add("right"); });
   track("quiz", curQ.question, i === right, curWeek());
-  if (i !== right) { btn.classList.add("wrong"); }
+  if (i !== right) {
+    btn.classList.add("wrong");
+    // wrong → back into the bank as "retry": it resurfaces until answered right
+    if (cfg()) fetch(cfg(), { method: "POST", body: JSON.stringify({ quiz: "missed", question: curQ.question }) }).catch(() => {});
+  }
   else {
     qScore++;
     fetch(cfg(), { method: "POST", body: JSON.stringify({ quiz: "mastered", question: curQ.question }) }).catch(() => {});
@@ -1285,7 +1289,11 @@ async function newChallenge(wk, btn) {
       py.globals.set("_user_code", d.solution);
       py.globals.set("_test_code", d.test);
       const chk = JSON.parse(await py.runPythonAsync(CHECK_PY));
-      if (!chk.ok) continue; // AI generated a broken exercise — regenerate
+      if (!chk.ok) {
+        // broken exercise — flag banked ones so they're never served again
+        if (d.banked) fetch(cfg(), { method: "POST", body: JSON.stringify({ challengeBad: d.title }) }).catch(() => {});
+        continue;
+      }
       EX[wk].push({ t: d.title || "AI challenge", q: d.brief || "Solve it so the checks pass.", c: d.scaffold, test: d.test, ai: 1 });
       chBusy = false;
       render();
@@ -1549,7 +1557,7 @@ function rSet() {
     <p class="muted" id="pushStatus"></p>
   </div>
   <div class="card"><h2>Data</h2>
-    <p class="muted">Progress: ${stats().done}/96 · pending sync: ${Object.keys(queue).length} · app v11</p>
+    <p class="muted">Progress: ${stats().done}/96 · pending sync: ${Object.keys(queue).length} · app v12</p>
     <button class="btn ghost" onclick="navigator.clipboard.writeText(JSON.stringify(state)); this.textContent='Copied ✓'">Export progress (copy JSON)</button>
   </div>
   <div class="card"><h2>Install as app</h2>
