@@ -76,6 +76,7 @@
   .vrow .vinfo { flex: 1; font-size: 13px; line-height: 1.35; }
   .vrow .vinfo small { display: block; color: #888; font-size: 11px; margin-top: 2px; }
   .vrow.seen .vinfo { color: #999; }
+  .vlib { max-height: 62vh; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   .exbadge { width: 34px; height: 34px; min-width: 34px; border-radius: 10px; background: #f1efe9; display: flex; align-items: center; justify-content: center; font-size: 15px; }
   .exbadge.on { background: #dcfce7; }
   .pybox { margin-top: 4px; }
@@ -1130,7 +1131,7 @@ function vidRow(wk, d) {
   const seen = vidWatched(wk, d);
   return `<div class="vrow ${seen?'seen':''}" id="vr_${wk}_${d}">
     <img class="vthumb" src="https://i.ytimg.com/vi/${v[1]}/mqdefault.jpg" alt="" loading="lazy" onclick="expandVid(${wk},${d})">
-    <div class="vinfo" onclick="expandVid(${wk},${d})"><b>D${d}</b> · ${esc(v[0])}<small>${v[2]}${seen?' · watched ✓':''}</small></div>
+    <div class="vinfo" onclick="expandVid(${wk},${d})"><b>W${wk}·D${d}</b> · ${esc(v[0])}<small>${v[2]}${seen?' · watched ✓':''}</small></div>
     <button class="vtick ${seen?'on':''}" onclick="toggleV(${wk},${d},this)">${seen?'✓':'○'}</button></div>`;
 }
 
@@ -1492,12 +1493,17 @@ function rLearn() {
   } else {
     quizCard = `<div class="card"><h2>AI quiz</h2><p class="muted">Fresh questions written for exactly what you've studied. Answer one correctly and it never comes back.</p><button class="btn primary undone" onclick="nextQ()">Get a question</button></div>`;
   }
-  const wl = YT[w] || [];
-  const seenCount = wl.filter((_, i) => vidWatched(w, i+1)).length;
-  const vidsCard = wl.length ? `<div class="card"><h2>This week's videos</h2>
-    <p class="muted" style="margin-bottom:6px">${seenCount}/${wl.length} watched · each one matches a day's task</p>
-    ${wl.map((_, i) => vidRow(w, i+1)).join("")}
-  </div>` : "";
+  // Full video library: every week, scrollable. Unwatched first (your current
+  // week on top, then curriculum order); watched sink to the bottom, greyed.
+  const allVids = [];
+  for (let vw = 1; vw <= 16; vw++) (YT[vw] || []).forEach((_, i) => allVids.push({ w: vw, d: i + 1 }));
+  const vkey = x => (x.w === w ? 0 : x.w) * 10 + x.d;
+  const unwatched = allVids.filter(x => !vidWatched(x.w, x.d)).sort((a, b) => vkey(a) - vkey(b));
+  const watched = allVids.filter(x => vidWatched(x.w, x.d)).sort((a, b) => (a.w * 10 + a.d) - (b.w * 10 + b.d));
+  const vidsCard = `<div class="card"><h2>Video library</h2>
+    <p class="muted" style="margin-bottom:6px">${watched.length}/${allVids.length} watched · all 16 weeks · watched ones sink to the bottom</p>
+    <div class="vlib">${unwatched.concat(watched).map(x => vidRow(x.w, x.d)).join("")}</div>
+  </div>`;
   const exl = EX[w] || [];
   const aiN = parseInt(localStorage.getItem("aiSolved")) || 0;
   const exCard = exl.length ? `<div class="card"><h2>Hands-on practice</h2>
@@ -1541,7 +1547,7 @@ function rSet() {
     <p class="muted" id="pushStatus"></p>
   </div>
   <div class="card"><h2>Data</h2>
-    <p class="muted">Progress: ${stats().done}/96 · pending sync: ${Object.keys(queue).length} · app v9</p>
+    <p class="muted">Progress: ${stats().done}/96 · pending sync: ${Object.keys(queue).length} · app v10</p>
     <button class="btn ghost" onclick="navigator.clipboard.writeText(JSON.stringify(state)); this.textContent='Copied ✓'">Export progress (copy JSON)</button>
   </div>
   <div class="card"><h2>Install as app</h2>
