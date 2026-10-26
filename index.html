@@ -9,6 +9,7 @@
 <meta name="theme-color" content="#EEF1F5" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0A1220" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.json">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <link rel="apple-touch-icon" href="icon.png">
 <title>AI Study</title>
 <style>
@@ -990,6 +991,111 @@ try { queue = JSON.parse(localStorage.getItem("queue")) || {}; } catch(e) {}
 const cfg = () => localStorage.getItem("sheetUrl") || "";
 
 function save() { localStorage.setItem("prog", JSON.stringify(state)); localStorage.setItem("queue", JSON.stringify(queue)); }
+
+// ---- Cloud account: Google sign-in through Supabase, data through our FastAPI backend ----
+// The key below is the public (publishable) one; row-level security and the invite list do the guarding.
+const API = "https://study-app-api-307052594061.us-central1.run.app";
+const sb = window.supabase ? window.supabase.createClient("https://wmsmlvmcexfanlfxupxi.supabase.co", "sb_publishable_YqNDnrH2IayFM1hR07_uFQ_1CrCslkF") : null;
+let me = null, cloudMsg = "", adminList = null, adminMsg = "";
+let cq = {}; try { cq = JSON.parse(localStorage.getItem("cq")) || {}; } catch (e) {}
+const saveCq = () => { try { localStorage.setItem("cq", JSON.stringify(cq)); } catch (e) {} };
+const isDate = v => /^\d{4}-\d\d-\d\d$/.test(v);
+// Supabase sends users back with ?error_description=... when the invite-only trigger refuses a new account.
+const authErr = (() => {
+  const q = new URLSearchParams(location.hash.slice(1) + "&" + location.search.slice(1));
+  const d = q.get("error_description");
+  if (d) history.replaceState(null, "", location.pathname);
+  return d || "";
+})();
+
+async function api(path, opts) {
+  const { data } = await sb.auth.getSession();
+  const t = data.session && data.session.access_token;
+  if (!t) throw new Error("Signed out");
+  const r = await fetch(API + path, { ...opts, headers: { authorization: "Bearer " + t, "content-type": "application/json" } });
+  if (!r.ok) throw new Error(((await r.json().catch(() => ({}))).detail) || ("Error " + r.status));
+  return r.json();
+}
+
+async function flushCloud() {
+  const ids = Object.keys(cq);
+  if (!me || !ids.length) return;
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200), sent = chunk.map(id => [id, cq[id]]);
+    await api("/ticks", { method: "POST", body: JSON.stringify(sent.map(([id, v]) => ({ id, done_on: v || null }))) });
+    sent.forEach(([id, v]) => { if (cq[id] === v) delete cq[id]; });
+    saveCq();
+  }
+}
+
+// Cloud is the source of truth once this device has uploaded its own progress (offered once per account).
+async function cloudSync() {
+  if (!me) return;
+  try {
+    const initKey = "cloudInit_" + me.id;
+    const [cloud, goalsCloud] = await Promise.all([api("/ticks"), api("/goals")]);
+    if (!localStorage.getItem(initKey)) {
+      const mine = Object.keys(state).filter(k => isDate(state[k]) && !(k in cloud));
+      if (mine.length && confirm("Upload the " + mine.length + " items of progress on this device to your account?")) {
+        mine.forEach(k => { cq[k] = state[k]; }); saveCq();
+      }
+      Object.keys(goals).forEach(k => { if (!(k in goalsCloud)) goalsCloud[k] = goals[k]; });
+      if (Object.keys(goalsCloud).length) await api("/goals", { method: "PUT", body: JSON.stringify(goalsCloud) });
+      localStorage.setItem(initKey, "1");
+    }
+    await flushCloud();
+    if (!Object.keys(cq).length) {
+      const fresh = await api("/ticks");
+      Object.keys(state).forEach(k => { if (!(k in fresh) && isDate(state[k])) delete state[k]; });
+      Object.entries(fresh).forEach(([k, v]) => { state[k] = v; });
+      save();
+    }
+    goals = { ...goals, ...goalsCloud }; try { localStorage.setItem("goals", JSON.stringify(goals)); } catch (e) {}
+    cloudMsg = ""; setDot("ok", "cloud synced");
+    if (me.is_admin) await adminLoad(true);
+  } catch (e) { cloudMsg = "Sync failed: " + e.message; setDot("err", "sync failed"); }
+}
+async function signIn() {
+  const { error } = await sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } });
+  if (error) { cloudMsg = error.message; render(); }
+}
+async function signOut() { await sb.auth.signOut(); me = null; adminList = null; setDot("", "local only"); render(); }
+
+async function adminLoad(quiet) {
+  try { adminList = await api("/admin/emails"); adminMsg = ""; } catch (e) { adminMsg = e.message; }
+  if (!quiet) render();
+}
+async function adminAdd() {
+  const el = document.getElementById("invIn");
+  try { await api("/admin/emails", { method: "POST", body: JSON.stringify({ email: el.value }) }); el.value = ""; adminMsg = ""; }
+  catch (e) { adminMsg = e.message; }
+  adminLoad();
+}
+async function adminRemove(email) {
+  if (!confirm("Remove " + email + " from the invite list?")) return;
+  try { await api("/admin/emails/" + encodeURIComponent(email), { method: "DELETE" }); adminMsg = ""; }
+  catch (e) { adminMsg = e.message; }
+  adminLoad();
+}
+const escA = s => esc(s).replace(/"/g, "&quot;");
+
+function rAccount() {
+  if (!sb) return `<div class="card"><h2>Account</h2><p class="muted">Sign-in needs a connection. Your progress is still saved on this device.</p></div>`;
+  const err = authErr ? "This Google account is not on the invite list. Ask the app owner to add your email." : cloudMsg;
+  const msg = err ? `<p class="muted" style="color:#C0392B">${esc(err)}</p>` : "";
+  if (!me) return `<div class="card"><h2>Account</h2>
+    <p class="muted">Sign in to sync your progress across devices. The app is invite-only, and it works without signing in too.</p>${msg}
+    <button class="btn primary undone" onclick="signIn()">Sign in with Google</button></div>`;
+  const admin = !me.is_admin ? "" : `<div class="card"><h2>Invited emails</h2>
+    ${(adminList || []).map(r => `<div class="goalrow"><div><b>${esc(r.email)}</b>${r.is_admin ? ' <span class="muted">admin</span>' : ""}</div>
+      ${r.is_admin ? "" : `<button class="btn ghost" style="width:auto;margin:0;padding:8px 14px" data-e="${escA(r.email)}" onclick="adminRemove(this.dataset.e)">Remove</button>`}</div>`).join("")}
+    <input type="text" inputmode="email" autocapitalize="off" id="invIn" placeholder="friend@gmail.com">
+    <button class="btn primary undone" onclick="adminAdd()">Invite</button>
+    ${adminMsg ? `<p class="muted" style="color:#C0392B">${esc(adminMsg)}</p>` : ""}</div>`;
+  return `<div class="card"><h2>Account</h2><p class="muted">Signed in as <b>${esc(me.email || "")}</b>${me.is_admin ? " (admin)" : ""}.</p>${msg}
+    <button class="btn ghost" onclick="cloudSync().then(render)">↻ Sync now</button>
+    <button class="btn ghost" onclick="signOut()">Sign out</button></div>` + admin;
+}
 // Local calendar date (YYYY-MM-DD) — never toISOString(), which is UTC and
 // stamps late-night ticks (before 4am in the UAE) with yesterday's date.
 function localDate(d) {
@@ -1047,6 +1153,7 @@ async function pull() {
   } catch(e) { setDot("err", "sync failed"); }
 }
 async function push(id, val) {
+  if (me && (val === null || isDate(val))) { cq[id] = val; saveCq(); flushCloud().catch(() => {}); }
   queue[id] = val; save();
   if (!cfg()) { setDot("off", "not connected"); return; }
   flushQueue();
@@ -1139,6 +1246,9 @@ function track(kind, ref, ok, wk) {
   a[k] = a[k] || { r: 0, w: 0 };
   ok ? a[k].r++ : a[k].w++;
   localStorage.setItem("attempts", JSON.stringify(a));
+  if (me && (kind === "quiz" || kind === "challenge")) {
+    api("/attempts", { method: "POST", body: JSON.stringify({ track: wk > 300 ? "sql" : wk > 200 ? "sf" : wk > 100 ? "dsa" : "py", kind: kind, ref: String(ref).slice(0, 120), ok: !!ok }) }).catch(() => {});
+  }
   // fire-and-forget permanent record in the Sheet ("attempts" tab)
   if (cfg()) fetch(cfg(), { method: "POST", body: JSON.stringify({ attempt: { date: localDate(), week: wk, kind: kind, ref: String(ref).slice(0, 80), ok: ok ? 1 : 0 } }) }).catch(() => {});
 }
@@ -1182,6 +1292,7 @@ const unitOf = id => (id === "py" ? "lessons" : "topics");
 function setGoal(id, delta) {
   goals[id] = Math.max(0, Math.min(id === "py" ? 12 : 14, goalOf(id) + delta));
   try { localStorage.setItem("goals", JSON.stringify(goals)); } catch (e) {}
+  if (me) api("/goals", { method: "PUT", body: JSON.stringify(goals) }).catch(() => {});
   render();
 }
 // Monday of this week (offset -1 = last week) as a local date string; weeks reset every Monday, nothing carries a debt.
@@ -1801,7 +1912,7 @@ function rMe() {
   const prog = `<div class="card"><h2>Your progress</h2><p class="muted" style="margin-bottom:6px">${s.streak}-day streak</p>
     ${Object.keys(TR).map(id => { const L = TR[id].topics, n = L.filter(tDone).length;
       return `<div class="goalrow"><div><b>${esc(TR[id].name)}</b><div class="muted">${n} of ${L.length} topics done</div>${goalBar(n, L.length)}</div></div>`; }).join("")}</div>`;
-  return prog + rSet();
+  return rAccount() + prog + rSet();
 }
 function rSet() {
   const perm = (typeof Notification !== "undefined") ? Notification.permission : "unsupported";
@@ -1873,7 +1984,18 @@ async function refresh() {
   if (JSON.stringify(state) !== before && tab !== "lib" && !curTopic && !document.querySelector(".vframe") && !document.querySelector(".pybox")) render();
 }
 
+if (authErr) tab = "me";
 render();
+if (sb) sb.auth.onAuthStateChange((ev, session) => {
+  // Not async inside the callback: calling Supabase from in here can deadlock, so hop out first.
+  if (ev === "SIGNED_OUT") { me = null; setTimeout(render, 0); }
+  else if (session && (ev === "INITIAL_SESSION" || ev === "SIGNED_IN")) {
+    setTimeout(async () => {
+      try { me = await api("/me"); } catch (e) { me = null; cloudMsg = "Could not reach the server: " + e.message; }
+      await cloudSync(); render();
+    }, 0);
+  }
+});
 loadTracks().then(render);
 pull().then(render);
 setInterval(refresh, 60000);
