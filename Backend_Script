@@ -608,7 +608,8 @@ function makeNudge(stage) {
     " If the task clearly needs a PC and he might be out, suggest a phone alternative " +
     "(Colab, or a quiz in the app). No emoji, no greetings.";
   let msg;
-  try { msg = callGemini(prompt, { temperature: 0.8, thinkingBudget: 0 }).trim(); }
+  // The GitHub nudge job gives up after 120 s, so use only the fast lite model (trying both models, twice each, took 155 s).
+  try { msg = callGemini(prompt, { temperature: 0.8, thinkingBudget: 0, models: ["gemini-flash-lite-latest"] }).trim(); }
   catch (err) { msg = "Tonight: " + st.todayTask + " (35 min). Small steps count."; }
   return { send: true, title: followUp ? "Still time tonight" : "Study time", message: msg };
 }
@@ -685,12 +686,13 @@ function stats() {
 }
 
 // Strict Gemini call: throws on failure (quote/quiz/nudge catch it themselves).
-// opts: { temperature, json (force JSON output), thinkingBudget (0 = no "thinking", much faster) }.
+// opts: { temperature, json (force JSON output), thinkingBudget (0 = no "thinking", much faster),
+//         models (override the model list; the nudge uses only the fast lite model) }.
 // If the API rejects the extra settings (400), it retries once with a plain request.
 function callGemini(prompt, opts) {
   opts = opts || {};
   const key = PropertiesService.getScriptProperties().getProperty("GEMINI_KEY");
-  const models = ["gemini-flash-latest", "gemini-flash-lite-latest"];
+  const models = opts.models || ["gemini-flash-latest", "gemini-flash-lite-latest"];
   let lastErr = "";
   for (let i = 0; i < models.length; i++) {
     for (let attempt = 0; attempt < 2; attempt++) {

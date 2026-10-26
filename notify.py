@@ -13,7 +13,7 @@ def stage():
 
 def main():
     s = os.environ.get("STAGE") or stage()
-    nudge = requests.get(EXEC_URL, params={"action": "nudge", "stage": s}, timeout=120).json()
+    nudge = requests.get(EXEC_URL, params={"action": "nudge", "stage": s}, timeout=200).json()
     print("Nudge decision:", nudge)
     if not nudge.get("send"):
         print("Nothing to send:", nudge.get("reason"))
