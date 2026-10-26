@@ -1,0 +1,362 @@
+{
+  "track": "salesforce-admin",
+  "note": "1-2 videos per topic, grouped by the 8 sections of the official Platform Administrator exam guide (Summer '25 alignment; see research/salesforce-admin-exam-outline.md). Every id verified against YouTube oEmbed on 2026-10-26; durations read from the watch page. Format: [title, youtubeId, duration, channel]. Prefer official channels (Salesforce Support, Salesforce Admins, Salesforce Developers); re-check videos against the current exam guide before booking since the exam is re-weighted each year.",
+  "sections": {
+    "configuration-setup": {
+      "title": "Configuration and Setup",
+      "weight": 15,
+      "topics": {
+        "profiles-permission-sets": {
+          "title": "Profiles, permission sets, permission set groups",
+          "videos": [
+            [
+              "Control Object Access with Profiles and Permission Sets (Who Sees What Ch. 3)",
+              "kOOS3vmYJFc",
+              "6:57",
+              "Salesforce Support"
+            ],
+            [
+              "How to Use Permission Set Groups (Who Sees What Ch. 4)",
+              "wQGvmNqa_gM",
+              "5:21",
+              "Salesforce Support"
+            ]
+          ]
+        },
+        "sharing-model": {
+          "title": "Sharing model: OWD and role hierarchy",
+          "videos": [
+            [
+              "Organization-Wide Defaults (Who Sees What Ch. 5)",
+              "zlX0Lipc_Gg",
+              "6:15",
+              "Salesforce Support"
+            ],
+            [
+              "Grant Record Access With Role Hierarchy (Who Sees What Ch. 6)",
+              "IFvxTbMkY9Q",
+              "8:40",
+              "Salesforce Support"
+            ]
+          ]
+        },
+        "sharing-rules": {
+          "title": "Sharing rules",
+          "videos": [
+            [
+              "Record Access with Sharing Rules (Who Sees What Ch. 8)",
+              "pXkX17G5ldo",
+              "4:32",
+              "Salesforce Support"
+            ]
+          ]
+        },
+        "org-security-controls": {
+          "title": "Org security controls: passwords, sessions, audit trail",
+          "videos": [
+            [
+              "Get Started with Org Level Security",
+              "wKgC_w8N6PM",
+              "6:54",
+              "Salesforce Support"
+            ],
+            [
+              "Audit Security Features",
+              "WXbm5zLE39I",
+              "5:36",
+              "Salesforce Support"
+            ]
+          ]
+        }
+      },
+      "objectives": [
+        "Describe the information found in the company settings (fiscal year, business hours, currency management, default settings).",
+        "Distinguish and understand the administration of declarative UI configuration (UI/UX settings, app menu, list views, global actions, Lightning App Builder).",
+        "Given a scenario, set up and maintain users (unique user name, locales, working hours, licences, feature licences, why a user is deactivated and not deleted, login methods).",
+        "Explain organization security controls (identity verification, Setup Audit Trail, login hours, session settings, agent access).",
+        "Given a scenario, apply security controls using the sharing model (teams, sharing hierarchy, public groups, org-wide defaults, roles and subordinates, role hierarchy, report and dashboard folders).",
+        "Given a scenario, decide when to use a custom profile or permission set (profile settings, permission set groups, muting)."
+      ]
+    },
+    "object-manager-lightning-app-builder": {
+      "title": "Object Manager and Lightning App Builder",
+      "weight": 15,
+      "topics": {
+        "object-relationships": {
+          "title": "Object relationships",
+          "videos": [
+            [
+              "Understanding Object Relationships",
+              "Lg1imNRQvPs",
+              "12:08",
+              "The Declarative Academy"
+            ]
+          ]
+        },
+        "fields-and-field-security": {
+          "title": "Fields and field-level security",
+          "videos": [
+            [
+              "What is Field Level Security? (Who Sees What Ch. 7)",
+              "8AFesZY9fak",
+              "4:13",
+              "Salesforce Support"
+            ]
+          ]
+        },
+        "record-types-page-layouts": {
+          "title": "Record types, page layouts, Lightning pages",
+          "videos": [
+            [
+              "What are Record Types? (Who Sees What Ch. 9)",
+              "7m6nJ3zWzaE",
+              "5:47",
+              "Salesforce Support"
+            ],
+            [
+              "Customize Record Pages with Lightning App Builder",
+              "79wA0-TjbcA",
+              "11:04",
+              "The Declarative Academy"
+            ]
+          ]
+        }
+      },
+      "objectives": [
+        "Describe the standard object architecture and relationship model (standard objects, parent/child, master-detail, lookup, junction relationships, record types, Schema Builder).",
+        "Explain how to create, delete and customize fields and page layouts on standard and custom objects, and the implications of deleting fields (roll-up summaries, cross-object formulas, picklist dependencies, relationship fields).",
+        "Given a scenario, create and assign page layouts, set Lightning page visibility, record types and business processes for custom and standard objects (quick actions and global actions)."
+      ]
+    },
+    "sales-marketing": {
+      "title": "Sales and Marketing Applications",
+      "weight": 10,
+      "topics": {
+        "leads-opportunities-campaigns": {
+          "title": "Leads, opportunities, Path, campaigns",
+          "videos": []
+        }
+      },
+      "gap": "Only 46-minute and longer videos found. Look for short official clips (Salesforce Support or Trailhead walk-throughs) on lead conversion, Path and campaigns.",
+      "objectives": [
+        "Given a scenario, identify the capabilities and implications of the sales process (leads, opportunities, Path).",
+        "Apply sales productivity features using opportunity tools (dashboards, lead scoring, Einstein for Sales, opportunity scoring, forecasting, territory management).",
+        "Describe lead automation and campaign management (lead convert, lead assignment rules, campaigns, campaign members)."
+      ]
+    },
+    "service-support": {
+      "title": "Service and Support Applications",
+      "weight": 10,
+      "topics": {
+        "case-management": {
+          "title": "Case management: queues, assignment, escalation",
+          "videos": [
+            [
+              "Automate Your Case Management (Service Cloud)",
+              "XHRHzIaWVdc",
+              "7:52",
+              "Salesforce Support"
+            ],
+            [
+              "Create Case Queues and Assignment Rules",
+              "uQdXuzz8m2o",
+              "4:59",
+              "The Declarative Academy"
+            ]
+          ]
+        }
+      },
+      "objectives": [
+        "Describe case management capabilities (cases, case assignment rules, queues).",
+        "Given a scenario, identify how to automate case management (support process, case auto-response rules, case escalation, Einstein for Service)."
+      ]
+    },
+    "productivity-collaboration": {
+      "title": "Productivity and Collaboration",
+      "weight": 10,
+      "topics": {
+        "chatter": {
+          "title": "Chatter and groups",
+          "videos": [
+            [
+              "Salesforce Basics: Chatter Groups",
+              "EtSW2H9jJxw",
+              "3:01",
+              "CloudQualified"
+            ],
+            [
+              "Work with Chatter Groups in Lightning Experience",
+              "1UM9o9TEBVg",
+              "10:40",
+              "The Declarative Academy"
+            ]
+          ]
+        },
+        "activities-appexchange": {
+          "title": "Activities, mobile app, AppExchange",
+          "videos": []
+        }
+      },
+      "gap": "No short video checked yet for activities, the Salesforce mobile app or AppExchange packages.",
+      "objectives": [
+        "Describe activity management (tasks, events).",
+        "Describe Chatter features (groups, access to groups, internal and external users).",
+        "Describe the Salesforce mobile app (Lightning pages, modifying the app, app menu, visibility, branding, launchpad).",
+        "Identify use cases for AppExchange applications (managed and unmanaged packages, who can publish)."
+      ]
+    },
+    "data-analytics": {
+      "title": "Data and Analytics Management",
+      "weight": 17,
+      "topics": {
+        "data-import": {
+          "title": "Importing data: Import Wizard and Data Loader",
+          "videos": [
+            [
+              "Data Import: Prepare your Data for Import",
+              "jSbWhWgvOfo",
+              "6:06",
+              "Salesforce Support"
+            ],
+            [
+              "Using the Data Import Wizard",
+              "buAHJEaDhYQ",
+              "5:06",
+              "Salesforce Emily"
+            ]
+          ]
+        },
+        "duplicate-management": {
+          "title": "Duplicate and matching rules",
+          "videos": [
+            [
+              "Use Matching Rules to Hunt Down Duplicate Records",
+              "zy0u5fKBft0",
+              "3:29",
+              "Salesforce Support"
+            ],
+            [
+              "Resolve and Prevent Duplicate Data",
+              "E1a1DCdJM9U",
+              "7:12",
+              "The Declarative Academy"
+            ]
+          ]
+        },
+        "reports": {
+          "title": "Reports: report types, joined reports, buckets",
+          "videos": [
+            [
+              "Create a Summary Report: Report Types vs Report Formats",
+              "s3zAhFDxygM",
+              "7:17",
+              "Salesforce Emily"
+            ],
+            [
+              "How to Create a Joined Report",
+              "HDm8RjavRPk",
+              "8:39",
+              "Salesforce Emily"
+            ]
+          ]
+        },
+        "dashboards": {
+          "title": "Dashboards",
+          "videos": [
+            [
+              "How to Build a Dashboard in Lightning Experience",
+              "git_DC9tl6w",
+              "4:58",
+              "Salesforce Support"
+            ],
+            [
+              "Dashboard Settings: View Dashboard As",
+              "G4bvZOgsP9Y",
+              "7:06",
+              "Rotive - Brian Hays"
+            ]
+          ]
+        }
+      },
+      "gap": "No short video checked yet for validation rules.",
+      "objectives": [
+        "Describe the considerations when importing, updating, transferring, mass deleting, exporting and backing up data (Data Import Wizard, data loader, archival).",
+        "Describe the capabilities and implications of data validation tools (duplicate and matching rules, validation rules).",
+        "Describe the options when creating or customizing a report or report type (joined objects, with or without records, formulas, buckets, joined reports, chart settings, grouping and totals).",
+        "Describe the impact of the sharing model on reports (visibility, folder structure, sharing).",
+        "Describe the options when creating and modifying dashboards (widgets, data sources, chart types, subscribing, dynamic dashboards, view dashboard as, scheduled refresh, filters)."
+      ]
+    },
+    "automation": {
+      "title": "Automation",
+      "weight": 15,
+      "topics": {
+        "choosing-automation": {
+          "title": "Flow vs Process Builder vs workflow rules",
+          "videos": [
+            [
+              "Salesforce Flow vs Process Builder vs Workflow Rules",
+              "P_yodOA91qs",
+              "4:27",
+              "Rotive - Brian Hays"
+            ]
+          ]
+        },
+        "record-triggered-flows": {
+          "title": "Record-triggered flows",
+          "videos": [
+            [
+              "Flow Builder Tutorial (Ep. 11): Record Triggered Flows",
+              "TyY8NrcVJ3c",
+              "10:34",
+              "Salesforce Made Simple"
+            ]
+          ]
+        },
+        "approvals": {
+          "title": "Approval processes",
+          "videos": [
+            [
+              "Salesforce Flow Approval Processes",
+              "BeIX-NWiybE",
+              "13:10",
+              "Salesforce Apex Hours"
+            ]
+          ]
+        }
+      },
+      "objectives": [
+        "Given a scenario, identify the appropriate automation solution for the tool's capabilities (escalation rules, case and lead assignment rules, default automation user, AI).",
+        "Describe capabilities, use cases and configuration for Flow (screen flows, record-triggered flows, autolaunched flows, order of execution).",
+        "Describe capabilities, use cases and configuration for the approval process (criteria for approvers, rejections, approvals)."
+      ]
+    },
+    "agentforce": {
+      "title": "Agentforce",
+      "weight": 8,
+      "topics": {
+        "agent-builder": {
+          "title": "Agent Builder, topics and instructions",
+          "videos": [
+            [
+              "How to Use the New Agentforce Builder",
+              "1GVaVSGNBRE",
+              "4:09",
+              "Salesforce Admins"
+            ],
+            [
+              "Write Better Agent Instructions with Agentforce AI Assist",
+              "JOu8oJ30sTc",
+              "4:35",
+              "Salesforce Developers"
+            ]
+          ]
+        }
+      },
+      "objectives": [
+        "Describe the capabilities and use cases of Agentforce (when it is appropriate to use AI, security, troubleshooting agent permissions).",
+        "Explain how to maintain, update or install prompts and instructions in Agent Builder (light testing, conversation preview)."
+      ]
+    }
+  }
+}

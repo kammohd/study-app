@@ -24,6 +24,7 @@ jobs:
         env:
           EXEC_URL: ${{ secrets.EXEC_URL }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUB: ${{ secrets.VAPID_SUB }}   # optional: mailto:you@example.com (push services may use it to contact you)
           APP_URL: https://kammohd.github.io/study-app/
           # Delay-proof: derive the stage from WHICH cron fired, not from the clock.
           # GitHub cron regularly runs 30-120 min late; the old hour-based guess turned

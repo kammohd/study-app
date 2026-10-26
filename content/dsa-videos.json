@@ -1,0 +1,390 @@
+{
+  "track": "dsa",
+  "note": "1-2 videos per topic. Every id verified against YouTube oEmbed on 2026-10-26; durations read from the watch page. Format: [title, youtubeId, duration, channel].",
+  "topics": {
+    "big-o": {
+      "title": "Big-O and complexity",
+      "videos": [
+        [
+          "Big-O Notation for Coding Interviews",
+          "BgLTDT03QtU",
+          "20:37",
+          "NeetCode"
+        ],
+        [
+          "Learn Big O notation in 6 minutes",
+          "XMUe3zFhM5c",
+          "6:24",
+          "Bro Code"
+        ]
+      ],
+      "focus": "Big-O describes how running time or memory grows with input size n. Common classes in order: O(1), O(log n), O(n), O(n log n), O(n^2), O(2^n). Drop constants and lower-order terms. Space complexity counts the extra memory an algorithm uses."
+    },
+    "arrays-hashing": {
+      "title": "Arrays and hashing",
+      "videos": [
+        [
+          "Contains Duplicate (LeetCode 217)",
+          "3OamzN90kPg",
+          "6:31",
+          "NeetCode"
+        ],
+        [
+          "Two Sum with a hash map (LeetCode 1)",
+          "KLlXCFG5TnA",
+          "8:26",
+          "NeetCode"
+        ]
+      ],
+      "focus": "Hash maps and sets give average O(1) lookup, insert and delete. Typical uses: detect duplicates, count frequencies, find a complement (Two Sum), group items by a key (anagrams). The trade is extra O(n) memory for faster time.",
+      "exercises": [
+        {
+          "t": "Two Sum",
+          "q": "Write two_sum(nums, target): return the indices [i, j] (i < j) of the two numbers that add up to target. Exactly one pair exists. Aim for one pass with a dict.",
+          "c": "def two_sum(nums, target):\n    # Hint: store each number's index; for each x look up target - x\n    return []\n\nprint(two_sum([2, 7, 11, 15], 9))",
+          "test": "assert two_sum([2, 7, 11, 15], 9) == [0, 1], 'basic case'\nassert two_sum([3, 2, 4], 6) == [1, 2], 'pair is not at the start'\nassert two_sum([3, 3], 6) == [0, 1], 'duplicate values'\nassert two_sum([-1, -2, -3, -4, -5], -8) == [2, 4], 'negatives'"
+        }
+      ]
+    },
+    "two-pointers": {
+      "title": "Two pointers",
+      "videos": [
+        [
+          "Valid Palindrome (LeetCode 125)",
+          "Nxzstmv_U0U",
+          "5:43",
+          "Greg Hogg"
+        ],
+        [
+          "3Sum (LeetCode 15)",
+          "jzZsG8n2R9A",
+          "12:53",
+          "NeetCode"
+        ]
+      ],
+      "focus": "Two indices move through a sequence, usually from both ends or at different speeds. Works on sorted or symmetric data: palindromes, pair sums, 3Sum. Typically O(n) time and O(1) extra space.",
+      "exercises": [
+        {
+          "t": "Valid Palindrome",
+          "q": "Write is_palindrome(s): True if s reads the same forwards and backwards, ignoring case and anything that is not a letter or digit. Use two pointers, not a reversed copy.",
+          "c": "def is_palindrome(s):\n    # Hint: left and right indices; skip characters where not ch.isalnum()\n    return False\n\nprint(is_palindrome('A man, a plan, a canal: Panama'))",
+          "test": "assert is_palindrome('A man, a plan, a canal: Panama') is True, 'punctuation and case'\nassert is_palindrome('race a car') is False, 'not a palindrome'\nassert is_palindrome('') is True, 'empty string'\nassert is_palindrome('.,') is True, 'only punctuation'\nassert is_palindrome('0P') is False, 'digits count'"
+        }
+      ]
+    },
+    "sliding-window": {
+      "title": "Sliding window",
+      "videos": [
+        [
+          "Best Time to Buy and Sell Stock (LeetCode 121)",
+          "1pkOgXD63yU",
+          "8:45",
+          "NeetCode"
+        ],
+        [
+          "Longest Substring Without Repeating Characters (LeetCode 3)",
+          "wiGpQwVHdE0",
+          "6:45",
+          "NeetCode"
+        ]
+      ],
+      "focus": "Keep a window [left, right] over a sequence and update the running state as it moves, instead of recomputing. Fixed-size windows (max sum of k items) and variable windows (longest substring satisfying a condition). Typically O(n).",
+      "exercises": [
+        {
+          "t": "Max sum of k items",
+          "q": "Write max_window_sum(nums, k): the largest sum of any k consecutive numbers. Slide the window, adding the new item and removing the old one, instead of re-summing.",
+          "c": "def max_window_sum(nums, k):\n    # Hint: sum the first k, then move one step at a time\n    return 0\n\nprint(max_window_sum([2, 1, 5, 1, 3, 2], 3))",
+          "test": "assert max_window_sum([2, 1, 5, 1, 3, 2], 3) == 9, 'basic case'\nassert max_window_sum([1, 2, 3], 3) == 6, 'window is the whole list'\nassert max_window_sum([-5, -2, -9, -1], 2) == -7, 'all negative'\nassert max_window_sum([4], 1) == 4, 'single item'"
+        }
+      ]
+    },
+    "stack": {
+      "title": "Stack",
+      "videos": [
+        [
+          "Valid Parentheses (LeetCode 20)",
+          "WTzjTskDFMg",
+          "10:43",
+          "NeetCode"
+        ],
+        [
+          "Daily Temperatures, monotonic stack (LeetCode 739)",
+          "cTBiBSnjO3c",
+          "11:52",
+          "NeetCode"
+        ]
+      ],
+      "focus": "A stack is last-in, first-out. Use it for matching brackets, undo-style state, and monotonic stacks (next greater element, daily temperatures). In Python a list gives O(1) append and pop.",
+      "exercises": [
+        {
+          "t": "Valid brackets",
+          "q": "Write is_valid(s): s contains only ()[]{} characters. Return True if every bracket is closed by the same type in the correct order.",
+          "c": "def is_valid(s):\n    # Hint: push openers; on a closer, the top of the stack must match\n    return False\n\nprint(is_valid('([]{})'))",
+          "test": "assert is_valid('()[]{}') is True, 'simple pairs'\nassert is_valid('([{}])') is True, 'nested'\nassert is_valid('(]') is False, 'wrong type'\nassert is_valid('((') is False, 'unclosed'\nassert is_valid(']') is False, 'closer with empty stack'\nassert is_valid('') is True, 'empty string'"
+        }
+      ]
+    },
+    "binary-search": {
+      "title": "Binary search",
+      "videos": [
+        [
+          "Koko Eating Bananas (LeetCode 875)",
+          "U2SozAs9RzA",
+          "15:12",
+          "NeetCode"
+        ]
+      ],
+      "focus": "Halve a sorted or monotonic search space each step: O(log n). Watch the boundaries (left <= right, computing mid) and apply it to answers as well as indices, for example searching the eating speed in Koko Eating Bananas.",
+      "exercises": [
+        {
+          "t": "Binary search",
+          "q": "Write search(nums, target): nums is sorted ascending. Return the index of target, or -1. It must run in O(log n): halve the range each step.",
+          "c": "def search(nums, target):\n    # Hint: left = 0, right = len(nums) - 1; compare nums[mid] with target\n    return -1\n\nprint(search([-1, 0, 3, 5, 9, 12], 9))",
+          "test": "assert search([-1, 0, 3, 5, 9, 12], 9) == 4, 'found'\nassert search([-1, 0, 3, 5, 9, 12], 2) == -1, 'missing'\nassert search([5], 5) == 0, 'single item found'\nassert search([5], 3) == -1, 'single item missing'\nassert search([], 1) == -1, 'empty list'\nassert search([1, 2, 3, 4, 5, 6, 7], 1) == 0, 'first item'\nassert search([1, 2, 3, 4, 5, 6, 7], 7) == 6, 'last item'"
+        }
+      ]
+    },
+    "linked-list": {
+      "title": "Linked list",
+      "videos": [
+        [
+          "Reverse Linked List, iterative and recursive (LeetCode 206)",
+          "G0_I-ZF0S38",
+          "11:07",
+          "NeetCode"
+        ],
+        [
+          "Linked List Cycle, Floyd's tortoise and hare (LeetCode 141)",
+          "gBTe7lFR3vc",
+          "10:43",
+          "NeetCode"
+        ]
+      ],
+      "focus": "Nodes linked by next pointers with no random access. Core moves: reverse in place, fast and slow pointers (Floyd cycle detection, middle node), a dummy head node to simplify edge cases, merging two sorted lists.",
+      "exercises": [
+        {
+          "t": "Reverse a linked list",
+          "q": "ListNode is given. Write reverse_list(head): reverse the list in place and return the new head. Walk the list once, re-pointing each node's next.",
+          "c": "class ListNode:\n    def __init__(self, val=0, next=None):\n        self.val = val\n        self.next = next\n\ndef reverse_list(head):\n    # Hint: keep prev and cur; save cur.next before you overwrite it\n    return head\n\nn = ListNode(1, ListNode(2, ListNode(3)))\nprint(reverse_list(n).val)",
+          "test": "def build(vals):\n    head = None\n    for v in reversed(vals):\n        head = ListNode(v, head)\n    return head\n\ndef to_list(node):\n    out = []\n    while node:\n        out.append(node.val)\n        node = node.next\n    return out\n\nassert to_list(reverse_list(build([1, 2, 3, 4, 5]))) == [5, 4, 3, 2, 1], 'five nodes'\nassert to_list(reverse_list(build([1, 2]))) == [2, 1], 'two nodes'\nassert to_list(reverse_list(build([7]))) == [7], 'one node'\nassert reverse_list(None) is None, 'empty list'"
+        }
+      ]
+    },
+    "trees": {
+      "title": "Trees",
+      "videos": [
+        [
+          "Invert Binary Tree (LeetCode 226)",
+          "OnSn2XEQ4MY",
+          "3:54",
+          "NeetCode"
+        ],
+        [
+          "Binary Tree Level Order Traversal, BFS (LeetCode 102)",
+          "6ZnyEApgFYg",
+          "9:35",
+          "NeetCode"
+        ]
+      ],
+      "focus": "A binary tree node has left and right children. DFS (recursive pre-, in-, post-order) and BFS (queue, level order). Depth and height, inverting, and the BST property for ordered search. Recursion depth equals tree height.",
+      "exercises": [
+        {
+          "t": "Maximum depth of a tree",
+          "q": "TreeNode is given. Write max_depth(root): the number of nodes on the longest path from the root down to a leaf. An empty tree has depth 0. Recursion works well here.",
+          "c": "class TreeNode:\n    def __init__(self, val=0, left=None, right=None):\n        self.val = val\n        self.left = left\n        self.right = right\n\ndef max_depth(root):\n    # Hint: depth = 1 + the deeper of the two subtrees\n    return 0\n\nt = TreeNode(3, TreeNode(9), TreeNode(20, TreeNode(15), TreeNode(7)))\nprint(max_depth(t))",
+          "test": "t = TreeNode(3, TreeNode(9), TreeNode(20, TreeNode(15), TreeNode(7)))\nassert max_depth(t) == 3, 'balanced example'\nassert max_depth(None) == 0, 'empty tree'\nassert max_depth(TreeNode(1)) == 1, 'single node'\nchain = TreeNode(1, None, TreeNode(2, None, TreeNode(3, None, TreeNode(4))))\nassert max_depth(chain) == 4, 'skewed tree'"
+        }
+      ]
+    },
+    "tries": {
+      "title": "Tries",
+      "videos": [
+        [
+          "Implement Trie, Prefix Tree (LeetCode 208)",
+          "oobqoCJlHA0",
+          "18:55",
+          "NeetCode"
+        ]
+      ],
+      "focus": "A trie (prefix tree) maps characters to child nodes with an end-of-word flag. Insert, search and starts-with take O(L) for word length L. Good for autocomplete and prefix queries.",
+      "exercises": [
+        {
+          "t": "Build a Trie",
+          "q": "Implement a Trie class with insert(word), search(word) (exact word present) and starts_with(prefix). Store one dict of children per node plus an end-of-word flag.",
+          "c": "class Trie:\n    def __init__(self):\n        # Hint: each node = {'children': {}, 'end': False}\n        pass\n\n    def insert(self, word):\n        pass\n\n    def search(self, word):\n        return False\n\n    def starts_with(self, prefix):\n        return False\n\nt = Trie()\nt.insert('apple')\nprint(t.search('apple'), t.starts_with('app'))",
+          "test": "t = Trie()\nt.insert('apple')\nassert t.search('apple') is True, 'inserted word'\nassert t.search('app') is False, 'prefix is not a word'\nassert t.starts_with('app') is True, 'prefix exists'\nassert t.starts_with('apx') is False, 'prefix missing'\nt.insert('app')\nassert t.search('app') is True, 'now a word'\nassert t.search('') is False, 'empty is not inserted'\nassert t.starts_with('') is True, 'empty prefix matches'"
+        }
+      ]
+    },
+    "heap": {
+      "title": "Heap and priority queue",
+      "videos": [
+        [
+          "Kth Largest Element in a Stream (LeetCode 703)",
+          "hOjcdrqMoQ8",
+          "11:17",
+          "NeetCode"
+        ],
+        [
+          "Task Scheduler (LeetCode 621)",
+          "s8p8ukTyA2I",
+          "17:06",
+          "NeetCode"
+        ]
+      ],
+      "focus": "A priority queue backed by a binary heap. Python's heapq is a min-heap: push and pop are O(log n), peek is O(1). Use it for top-K, kth largest in a stream, merging sorted streams and scheduling. For a max-heap push negated values.",
+      "exercises": [
+        {
+          "t": "K largest numbers",
+          "q": "Write k_largest(nums, k): return the k largest numbers, biggest first. Use heapq (hint: heapq.nlargest, or keep a min-heap of size k).",
+          "c": "import heapq\n\ndef k_largest(nums, k):\n    # Hint: a min-heap of size k keeps the k largest seen so far\n    return []\n\nprint(k_largest([3, 2, 1, 5, 6, 4], 2))",
+          "test": "assert k_largest([3, 2, 1, 5, 6, 4], 2) == [6, 5], 'basic case'\nassert k_largest([3, 2, 3, 1, 2, 4, 5, 5, 6], 4) == [6, 5, 5, 4], 'duplicates'\nassert k_largest([1], 1) == [1], 'single item'\nassert k_largest([5, 1], 2) == [5, 1], 'k equals length'"
+        }
+      ]
+    },
+    "backtracking": {
+      "title": "Backtracking",
+      "videos": [
+        [
+          "Combination Sum (LeetCode 39)",
+          "GBKI9VSKdGg",
+          "15:10",
+          "NeetCode"
+        ]
+      ],
+      "focus": "Build candidates step by step, recurse, then undo the last choice (choose, explore, unchoose). Prune invalid branches early. Typical problems: subsets, permutations, combination sum, N-Queens. Worst case is exponential time.",
+      "exercises": [
+        {
+          "t": "All subsets",
+          "q": "Write subsets(nums): return every subset of the list (including the empty one) as a list of lists, in any order. Use choose, explore, un-choose.",
+          "c": "def subsets(nums):\n    # Hint: recurse over the index; either include nums[i] or skip it\n    return []\n\nprint(subsets([1, 2, 3]))",
+          "test": "def norm(res):\n    return sorted(sorted(x) for x in res)\n\nassert norm(subsets([1, 2, 3])) == norm([[], [1], [2], [3], [1, 2], [1, 3], [2, 3], [1, 2, 3]]), 'three numbers'\nassert norm(subsets([])) == [[]], 'empty list has one subset'\nassert norm(subsets([0])) == [[], [0]], 'one number'\nassert len(subsets([1, 2, 3, 4])) == 16, '2**n subsets'"
+        }
+      ]
+    },
+    "graphs": {
+      "title": "Graphs",
+      "videos": [
+        [
+          "Number of Islands (LeetCode 200)",
+          "pV2kpPD66nE",
+          "11:41",
+          "NeetCode"
+        ],
+        [
+          "Clone Graph (LeetCode 133)",
+          "mQeF6bN8hMk",
+          "11:48",
+          "NeetCode"
+        ]
+      ],
+      "focus": "Nodes and edges, usually stored as adjacency lists. BFS (queue) finds shortest paths in unweighted graphs; DFS handles connectivity, islands, cycle detection and topological order. Track visited nodes. Time O(V + E).",
+      "exercises": [
+        {
+          "t": "Number of islands",
+          "q": "Write num_islands(grid): grid is a list of strings of '1' (land) and '0' (water). Count groups of land connected up, down, left or right. Use DFS or BFS and mark visited cells.",
+          "c": "def num_islands(grid):\n    # Hint: for each unvisited '1', explore its whole island, then count +1\n    return 0\n\nprint(num_islands(['11000', '11000', '00100', '00011']))",
+          "test": "assert num_islands(['11000', '11000', '00100', '00011']) == 3, 'three islands'\nassert num_islands(['111', '010', '111']) == 1, 'one connected island'\nassert num_islands(['000']) == 0, 'all water'\nassert num_islands([]) == 0, 'empty grid'\nassert num_islands(['101', '010', '101']) == 5, 'diagonals do not connect'"
+        }
+      ]
+    },
+    "dp-1d": {
+      "title": "1-D dynamic programming",
+      "videos": [
+        [
+          "Climbing Stairs (LeetCode 70)",
+          "Y0lT9Fck7qI",
+          "18:07",
+          "NeetCode"
+        ],
+        [
+          "Coin Change (LeetCode 322)",
+          "H9bfqozjoqs",
+          "19:23",
+          "NeetCode"
+        ]
+      ],
+      "focus": "Dynamic programming stores answers to overlapping subproblems. In 1-D, dp[i] depends on earlier states: climbing stairs, house robber, coin change. Define the state, the recurrence and the base cases; use top-down memoisation or a bottom-up table.",
+      "exercises": [
+        {
+          "t": "Climbing stairs",
+          "q": "Write climb_stairs(n): you can climb 1 or 2 steps at a time. How many distinct ways are there to reach step n? Notice the pattern: ways(n) = ways(n-1) + ways(n-2).",
+          "c": "def climb_stairs(n):\n    # Hint: keep only the last two answers\n    return 0\n\nprint([climb_stairs(i) for i in range(1, 6)])",
+          "test": "assert climb_stairs(1) == 1, 'n = 1'\nassert climb_stairs(2) == 2, 'n = 2'\nassert climb_stairs(3) == 3, 'n = 3'\nassert climb_stairs(5) == 8, 'n = 5'\nassert climb_stairs(30) == 1346269, 'must be efficient for n = 30'"
+        }
+      ]
+    },
+    "dp-2d": {
+      "title": "2-D dynamic programming",
+      "videos": [
+        [
+          "Longest Common Subsequence (LeetCode 1143)",
+          "Ua0GhsJSlWM",
+          "18:25",
+          "NeetCode"
+        ],
+        [
+          "Longest Increasing Subsequence (LeetCode 300)",
+          "cjWnW0hdF1Y",
+          "18:13",
+          "NeetCode"
+        ]
+      ],
+      "focus": "Two-dimensional state, such as dp[i][j] over two sequences or a grid: longest common subsequence, edit distance, unique paths. Fill the table from the base cases; time O(m*n), and space can often shrink to one row.",
+      "exercises": [
+        {
+          "t": "Longest common subsequence",
+          "q": "Write lcs_length(a, b): the length of the longest subsequence (characters in order, not necessarily adjacent) shared by strings a and b. Use a table dp[i][j].",
+          "c": "def lcs_length(a, b):\n    # Hint: dp[i][j] = answer for a[:i] and b[:j]; match -> 1 + dp[i-1][j-1], else max of the two neighbours\n    return 0\n\nprint(lcs_length('abcde', 'ace'))",
+          "test": "assert lcs_length('abcde', 'ace') == 3, 'ace'\nassert lcs_length('abc', 'abc') == 3, 'identical'\nassert lcs_length('abc', 'def') == 0, 'nothing in common'\nassert lcs_length('', 'abc') == 0, 'empty string'\nassert lcs_length('bl', 'yby') == 1, 'order matters'"
+        }
+      ]
+    },
+    "greedy": {
+      "title": "Greedy",
+      "videos": [
+        [
+          "Maximum Subarray (LeetCode 53)",
+          "5WZl3MMT0Eg",
+          "8:03",
+          "NeetCode"
+        ],
+        [
+          "Jump Game (LeetCode 55)",
+          "Yan0cv2cLy8",
+          "16:27",
+          "NeetCode"
+        ]
+      ],
+      "focus": "Take the locally best choice at each step when it provably leads to a global optimum. Examples: maximum subarray (Kadane), jump game, interval scheduling. Justify it (for example with an exchange argument) or fall back to dynamic programming.",
+      "exercises": [
+        {
+          "t": "Jump game",
+          "q": "Write can_jump(nums): you start at index 0 and nums[i] is the maximum jump length from index i. Return True if you can reach the last index. Track the furthest index you can reach.",
+          "c": "def can_jump(nums):\n    # Hint: furthest = 0; if i > furthest you are stuck\n    return False\n\nprint(can_jump([2, 3, 1, 1, 4]))",
+          "test": "assert can_jump([2, 3, 1, 1, 4]) is True, 'reachable'\nassert can_jump([3, 2, 1, 0, 4]) is False, 'stuck on the zero'\nassert can_jump([0]) is True, 'already at the end'\nassert can_jump([0, 1]) is False, 'cannot move at all'\nassert can_jump([2, 0, 0]) is True, 'exactly enough'"
+        }
+      ]
+    },
+    "intervals": {
+      "title": "Intervals",
+      "videos": [
+        [
+          "Insert Interval (LeetCode 57)",
+          "A8NUOmlwOlM",
+          "11:50",
+          "NeetCode"
+        ]
+      ],
+      "focus": "Sort by start, then sweep, merging or inserting while tracking the current end. Typical problems: merge intervals, insert interval, meeting rooms. Sorting dominates, so O(n log n).",
+      "exercises": [
+        {
+          "t": "Merge intervals",
+          "q": "Write merge(intervals): a list of [start, end] pairs in any order. Merge all overlapping intervals (touching ends like [1,4] and [4,5] count as overlapping) and return them sorted by start.",
+          "c": "def merge(intervals):\n    # Hint: sort by start, then compare each interval's start with the last merged end\n    return []\n\nprint(merge([[1, 3], [2, 6], [8, 10], [15, 18]]))",
+          "test": "assert merge([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]], 'basic case'\nassert merge([[1, 4], [4, 5]]) == [[1, 5]], 'touching ends merge'\nassert merge([[5, 6], [1, 2]]) == [[1, 2], [5, 6]], 'unsorted input'\nassert merge([[1, 10], [2, 3]]) == [[1, 10]], 'one inside another'\nassert merge([]) == [], 'empty list'"
+        }
+      ]
+    }
+  }
+}

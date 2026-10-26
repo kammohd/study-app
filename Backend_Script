@@ -1,0 +1,775 @@
+// ============================================================
+// AI Study — complete Apps Script backend (v10)
+// Replace EVERYTHING in the Apps Script editor with this file,
+// then Deploy → Manage deployments → ✏️ → Version: New → Deploy.
+//
+// v10 changes
+//  - Every AI question is VERIFIED before it is stored: a second call answers it blind,
+//    and it is dropped unless that answer agrees (and the checker is sure).
+//  - Topic quizzes (DSA, Salesforce) are written from the source text the app sends,
+//    must carry evidence, and echo topicId back so the app can reject wrong-topic replies.
+//  - Topic coding challenges are banked per topic.
+//  - refillBanks has a time budget (the old one hit the 6-minute limit) and lighter calls.
+//  - The week now follows your first unticked lesson, not a hard-coded start date, and
+//    only lesson ticks count as "done" (videos/topics no longer inflate it).
+// ============================================================
+
+const SHEET_NAME = "progress";
+const QUIZ_SHEET = "quiz";
+const PUSH_SHEET = "push";
+const DATE_COL = 5;
+
+// Batch-accumulation settings: one Gemini call fills a whole batch;
+// banks are topped up to the target, so missed days never waste quota.
+const QUIZ_BATCH = 10, QUIZ_TARGET = 12;
+const CH_BATCH = 5, CH_TARGET = 6;
+const TQ_BATCH = 5;                    // topic questions per generation call
+const REFILL_BUDGET_MS = 4 * 60 * 1000; // stop starting new work after 4 min (limit is 6)
+const THEMES = ["Python setup & basics","Files, JSON & errors","APIs & requests","First script on GitHub",
+  "Prompting fundamentals","First LLM API calls","Classification & structured output","CRM enrichment tool",
+  "RAG concepts","Chroma hands-on","Build the Q&A bot","Ship the Q&A bot",
+  "Salesforce REST from Python","Capstone build","Capstone polish","AI-900 + wrap-up"];
+
+// ---------------- routing ----------------
+
+function doGet(e) {
+  const action = (e && e.parameter && e.parameter.action) || "";
+  if (action === "quote") return jsonOut({ quote: makeQuote() });
+  if (action === "subs") return jsonOut({ subs: getSubs() });
+  if (action === "nudge") return jsonOut(makeNudge(e.parameter.stage));
+  return jsonOut(readProgress());
+}
+
+function doPost(e) {
+  const data = JSON.parse(e.postData.contents);
+
+  // AI routes with no sheet access — no lock needed
+  if (data.hint) return jsonOut(aiHint_({ hint: data.hint }));
+  if (data.grade) return jsonOut(aiGrade_({ grade: data.grade }));
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    if (data.attempt) return jsonOut(logAttempt_(data));
+    if (data.challenge) {
+      const res = aiChallenge_(data);
+      if (data.topicId) res.topicId = String(data.topicId);   // the app rejects replies for the wrong topic
+      return jsonOut(res);
+    }
+    if (data.challengeSolved) return jsonOut(challengeSolved_(data));
+    if (data.ticks) { saveTicks(data.ticks); return jsonOut({ ok: true }); }
+    if (data.quiz === "next" && data.topicId) {
+      try { return jsonOut(makeTopicQuiz_(data)); }
+      catch (err) { return jsonOut({ topicId: String(data.topicId), error: String(err.message || err).slice(0, 120) }); }
+    }
+    if (data.quiz === "next") {
+      try { return jsonOut(makeQuiz(data.week)); }
+      catch (err) { return jsonOut({ error: String(err) }); }
+    }
+    if (data.quiz === "topicResult") { topicResult_(data); return jsonOut({ ok: true }); }
+    if (data.quiz === "mastered") { addMastered(data.question); return jsonOut({ ok: true }); }
+    if (data.quiz === "missed") { markMissed_(data.question); return jsonOut({ ok: true }); }
+    if (data.challengeBad) { challengeBad_(data.challengeBad); return jsonOut({ ok: true }); }
+    if (data.subscribe) {
+      saveSub_(data.subscribe);
+      return jsonOut({ ok: true });
+    }
+    return jsonOut({ error: "unknown request" });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ---------------- progress ----------------
+
+function readProgress() {
+  const rows = sheet().getDataRange().getValues();
+  const out = {};
+  rows.forEach(function (r, i) {
+    if (i === 0) return;
+    let v = r[DATE_COL - 1];
+    if (!r[0] || v === "") return;
+    out[String(r[0])] = fmtDate(v);
+  });
+  return out;
+}
+
+function saveTicks(ticks) {
+  const sh = sheet();
+  const ids = sh.getRange(1, 1, sh.getLastRow(), 1).getValues().map(function (r) { return String(r[0]); });
+  Object.keys(ticks).forEach(function (id) {
+    const val = ticks[id];
+    const row = ids.indexOf(id) + 1;
+    if (row === 0) {                     // unknown id (video/exercise/topic) → new row
+      if (!val) return;                  // un-marking something never stored: skip
+      sh.appendRow([id, "", "", "", val]);
+      ids.push(id);
+      return;
+    }
+    sh.getRange(row, DATE_COL).setValue(val ? val : "");
+  });
+}
+
+// 📈 learning-signal log — every quiz/exercise/challenge attempt, right or
+// wrong, lands as a row in the "attempts" tab (created on first use).
+function logAttempt_(body) {
+  var ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName("attempts");
+  if (!sh) {
+    sh = ss.insertSheet("attempts");
+    sh.appendRow(["date", "week", "kind", "what", "correct"]);
+  }
+  var a = body.attempt;
+  sh.appendRow([String(a.date), Number(a.week), String(a.kind), String(a.ref), Number(a.ok)]);
+  return { ok: true };
+}
+
+// ---------------- grounded generation helpers ----------------
+
+function parseJson_(raw) {
+  var t = String(raw).replace(/```json|```/g, "").trim();
+  var m = t.match(/\[[\s\S]*\]/);
+  return JSON.parse(m ? m[0] : t);
+}
+
+// Structural check: a real question, exactly 4 distinct options, an integer answer index.
+function okQ_(q) {
+  if (!q || typeof q.question !== "string" || q.question.length < 15) return false;
+  if (!Array.isArray(q.options) || q.options.length !== 4) return false;
+  var seen = {};
+  for (var i = 0; i < 4; i++) {
+    var o = String(q.options[i]).trim();
+    if (!o || seen[o.toLowerCase()]) return false;
+    seen[o.toLowerCase()] = 1;
+  }
+  var c = Number(q.correct);
+  return c === Math.floor(c) && c >= 0 && c <= 3;
+}
+
+// Models love putting the right answer first. Shuffle, keep track of where it went.
+function shuffleQ_(q) {
+  var opts = q.options.map(function (o, i) { return { o: String(o), right: i === Number(q.correct) }; });
+  for (var i = opts.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var t = opts[i]; opts[i] = opts[j]; opts[j] = t;
+  }
+  q.options = opts.map(function (x) { return x.o; });
+  q.correct = opts.findIndex(function (x) { return x.right; });
+  return q;
+}
+
+function norm_(s) { return String(s).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim(); }
+
+// The evidence quote must really come from the source: 80% of its word-triples appear in the source.
+function quoteInSource_(quote, src) {
+  var w = norm_(quote).split(" ").filter(Boolean);
+  if (w.length < 4) return false;
+  var S = " " + norm_(src) + " ", hit = 0, tot = 0;
+  for (var i = 0; i + 2 < w.length; i++) {
+    tot++;
+    if (S.indexOf(" " + w[i] + " " + w[i + 1] + " " + w[i + 2] + " ") >= 0) hit++;
+  }
+  return tot > 0 && hit / tot >= 0.8;
+}
+
+// Blind check: a second call answers every question WITHOUT seeing the claimed answer.
+// Keep only questions where it agrees and says it is sure. objMode: the source lists exam
+// objectives, so general Salesforce knowledge is allowed; otherwise the source must decide it.
+function verifyQuestions_(items, src, objMode) {
+  if (!items.length) return [];
+  var qs = items.map(function (q, i) { return { i: i, question: q.question, options: q.options }; });
+  var p = "You are an exam checker. Answer each multiple-choice question yourself, independently.\n" +
+    (objMode
+      ? "Use your own accurate knowledge; the text below only says what the exam covers.\n"
+      : "Use ONLY the source text. If the source does not settle the answer, set sure to false.\n") +
+    "SOURCE:\n" + src + "\n\nQUESTIONS (JSON):\n" + JSON.stringify(qs) +
+    "\n\nReply with ONLY a JSON array: [{\"i\":0,\"answer\":<option index 0-3>,\"sure\":true or false}, ...]. " +
+    "sure is true only if exactly one option is clearly correct and you are certain.";
+  var arr = parseJson_(callGemini(p, { temperature: 0, json: true, thinkingBudget: 0 }));
+  var by = {};
+  arr.forEach(function (a) { by[a.i] = a; });
+  return items.filter(function (q, i) {
+    var a = by[i];
+    return a && a.sure === true && Number(a.answer) === Number(q.correct);
+  });
+}
+
+// ---------------- AI: quote & quiz ----------------
+
+function makeQuote() {
+  const cache = CacheService.getScriptCache();
+  const hit = cache.get("quote");
+  if (hit) return hit;
+  const st = stats();
+  const prompt =
+    "Write ONE motivational line (max 18 words) for Mohammad, a Salesforce manager " +
+    "retraining as an AI engineer. He has completed " +
+    st.done + " of 96 plan lessons and has " + (st.tickedToday ? "already" : "not yet") +
+    " studied today. Next lesson: " + st.todayTask + ". " +
+    "Vary style: sometimes progress, sometimes identity, sometimes momentum. " +
+    "No emoji, no quotation marks, no preamble.";
+  try {
+    const q = callGemini(prompt, { temperature: 0.9, thinkingBudget: 0 }).trim();
+    cache.put("quote", q, 1800);
+    return q;
+  } catch (err) {
+    return "Consistency beats intensity.";
+  }
+}
+
+// ---- quiz bank: batch-generated, verified, served for free ----
+// Tab "quizbank": date | week | question | options(JSON) | correct | status | explanation
+// status: new → served → right (never again) or retry (resurfaces until right)
+
+function quizBankSheet_() {
+  var ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName("quizbank");
+  if (!sh) {
+    sh = ss.insertSheet("quizbank");
+    sh.appendRow(["date", "week", "question", "options", "correct", "status", "explanation"]);
+  }
+  return sh;
+}
+
+// Servable = new, retry, or served-before-today (stale serve, e.g. app closed mid-question)
+function servableQuiz_(rows, week) {
+  var today = fmtDate(new Date());
+  var out = [];
+  for (var i = 1; i < rows.length; i++) {
+    if (Number(rows[i][1]) !== Number(week)) continue;
+    var st = String(rows[i][5]);
+    if (st === "new" || st === "retry" || (st === "served" && String(rows[i][0]) !== today)) out.push(i);
+  }
+  return out;
+}
+
+function makeQuiz(week) {
+  week = Number(week) || stats().week;
+  var sh = quizBankSheet_();
+  var rows = sh.getDataRange().getValues();
+  var idxs = servableQuiz_(rows, week);
+  // fresh questions first, retries after
+  idxs.sort(function (a, b) {
+    var pa = String(rows[a][5]) === "new" ? 0 : 1;
+    var pb = String(rows[b][5]) === "new" ? 0 : 1;
+    return pa - pb || a - b;
+  });
+  if (!idxs.length) {                       // bank dry → ONE generation call + ONE verification call
+    genQuizBatch_(sh, week);
+    rows = sh.getDataRange().getValues();
+    idxs = servableQuiz_(rows, week);
+    if (!idxs.length) throw new Error("couldn't write a question I could verify — tap again");
+  }
+  var r = idxs[0];
+  sh.getRange(r + 1, 6).setValue("served");
+  sh.getRange(r + 1, 1).setValue(fmtDate(new Date()));
+  return { question: String(rows[r][2]), options: JSON.parse(rows[r][3]), correct: Number(rows[r][4]), explanation: String(rows[r][6] || "") };
+}
+
+function genQuizBatch_(sh, week) {
+  var st = stats();
+  var recent = st.doneTasks.slice(-12).join("; ") || ("the theme: " + THEMES[week - 1]);
+  var existing = sh.getDataRange().getValues().slice(1).map(function (r) { return String(r[2]); });
+  var avoid = existing.concat(getMastered()).slice(-60);
+  var prompt =
+    "Create " + QUIZ_BATCH + " DIFFERENT beginner multiple-choice questions to help a learner revise. " +
+    "They are on week " + week + " (theme: " + THEMES[week - 1] + ") of an AI-engineering program. " +
+    "Recently completed lessons: " + recent + ". " +
+    (avoid.length ? "NEVER repeat or rephrase these questions: " + avoid.join(" | ") + ". " : "") +
+    "Ask about concepts in those lessons. Vary topic and difficulty.\n" +
+    "RULES: exactly 4 options; exactly one correct; only well-established facts you are certain of " +
+    "(no version numbers, limits or library details you are unsure of); distractors plausible but clearly wrong; " +
+    "put the correct answer in a random position; add a one-sentence explanation.\n" +
+    "Reply with ONLY a JSON array: " +
+    '[{"question":"...","options":["...","...","...","..."],"correct":0,"explanation":"..."}, ...] ' +
+    "where correct is the index of the right option.";
+  var items = parseJson_(callGemini(prompt, { temperature: 0.4, json: true, thinkingBudget: 0 })).filter(okQ_);
+  var good = verifyQuestions_(items, "Lessons: " + recent, true);
+  good.forEach(function (q) {
+    q = shuffleQ_(q);
+    sh.appendRow([fmtDate(new Date()), week, String(q.question), JSON.stringify(q.options), q.correct, "new", String(q.explanation || "")]);
+  });
+}
+
+function addMastered(question) {
+  quizSheet().appendRow([question, fmtDate(new Date())]);
+  var sh = quizBankSheet_();
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][2]) === String(question)) { sh.getRange(i + 1, 6).setValue("right"); return; }
+  }
+}
+
+// Wrong answer → back into the bank as "retry": resurfaces until answered right.
+function markMissed_(question) {
+  var sh = quizBankSheet_();
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][2]) === String(question)) { sh.getRange(i + 1, 6).setValue("retry"); return; }
+  }
+}
+
+function getMastered() {
+  return quizSheet().getDataRange().getValues()
+    .map(function (r) { return String(r[0]); })
+    .filter(function (t) { return t !== ""; });
+}
+
+// ---- topic quiz bank (DSA, Salesforce): written from the source the app sends ----
+// Tab "topicbank": date | topicId | question | options(JSON) | correct | status | explanation | evidence
+
+function topicBankSheet_() {
+  var ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName("topicbank");
+  if (!sh) {
+    sh = ss.insertSheet("topicbank");
+    sh.appendRow(["date", "topicId", "question", "options", "correct", "status", "explanation", "evidence"]);
+  }
+  return sh;
+}
+
+function servableTopic_(rows, id) {
+  var today = fmtDate(new Date()), out = [];
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][1]) !== id) continue;
+    var st = String(rows[i][5]);
+    if (st === "new" || st === "retry" || (st === "served" && String(rows[i][0]) !== today)) out.push(i);
+  }
+  out.sort(function (a, b) {
+    var pa = String(rows[a][5]) === "new" ? 0 : 1, pb = String(rows[b][5]) === "new" ? 0 : 1;
+    return pa - pb || a - b;
+  });
+  return out;
+}
+
+function makeTopicQuiz_(d) {
+  var id = String(d.topicId), sh = topicBankSheet_();
+  var rows = sh.getDataRange().getValues();
+  var idxs = servableTopic_(rows, id);
+  if (!idxs.length) {
+    genTopicBatch_(sh, d);
+    rows = sh.getDataRange().getValues();
+    idxs = servableTopic_(rows, id);
+    if (!idxs.length) throw new Error("couldn't write a question I could verify — tap again");
+  }
+  var r = idxs[0];
+  sh.getRange(r + 1, 6).setValue("served");
+  sh.getRange(r + 1, 1).setValue(fmtDate(new Date()));
+  return { topicId: id, question: String(rows[r][2]), options: JSON.parse(rows[r][3]), correct: Number(rows[r][4]),
+    explanation: String(rows[r][6] || ""), evidence: String(rows[r][7] || "") };
+}
+
+function genTopicBatch_(sh, d) {
+  var id = String(d.topicId);
+  var src = String(d.source || "").slice(0, 4000);
+  if (src.length < 40) throw new Error("no source text for this topic");
+  var objMode = String(d.track) === "sf";     // Salesforce sends exam objectives, DSA sends a fact summary
+  var existing = sh.getDataRange().getValues().slice(1)
+    .filter(function (r) { return String(r[1]) === id; }).map(function (r) { return String(r[2]); }).slice(-30);
+  var lines = src.split("\n").filter(Boolean);
+  var numbered = lines.map(function (l, i) { return (i + 1) + ". " + l; }).join("\n");
+  var prompt;
+  if (objMode) {
+    prompt = "You write practice questions for the Salesforce Certified Platform Administrator exam.\n" +
+      "Topic: " + d.topic + " (" + d.section + ")\nOFFICIAL OBJECTIVES for this section (numbered):\n" + numbered + "\n\n" +
+      "Write " + TQ_BATCH + " DIFFERENT scenario-style questions, each testing ONE objective above.\n" +
+      "RULES: use only well-established, documented Salesforce behaviour you are CERTAIN of. " +
+      "Never state numbers, limits, prices, release names or UI paths unless certain. If unsure of a fact, pick a different concept. " +
+      "Exactly 4 options, exactly one correct, distractors plausible but wrong, correct answer in a random position, " +
+      "one-sentence explanation, and \"objective\": the number of the objective tested.\n" +
+      (existing.length ? "Do NOT repeat these: " + existing.join(" | ") + "\n" : "") +
+      "Reply with ONLY a JSON array: " +
+      '[{"question":"...","options":["...","...","...","..."],"correct":0,"explanation":"...","objective":1}, ...]';
+  } else {
+    prompt = "You write exam-prep multiple-choice questions for a learner.\n" +
+      "Topic: " + d.topic + "\nSOURCE (the ONLY facts you may use):\n" + src + "\n\n" +
+      "Write " + TQ_BATCH + " DIFFERENT questions that can be answered from SOURCE alone.\n" +
+      "RULES: use no fact that is not in SOURCE. Exactly 4 options, exactly one correct, distractors plausible but wrong, " +
+      "correct answer in a random position, a one-sentence explanation, and \"evidence\": an exact quote copied from SOURCE (6-30 words) that proves the answer.\n" +
+      (existing.length ? "Do NOT repeat these: " + existing.join(" | ") + "\n" : "") +
+      "Reply with ONLY a JSON array: " +
+      '[{"question":"...","options":["...","...","...","..."],"correct":0,"explanation":"...","evidence":"..."}, ...]';
+  }
+  var items = parseJson_(callGemini(prompt, { temperature: 0.3, json: true, thinkingBudget: 0 })).filter(okQ_);
+  items = items.filter(function (q) {
+    if (objMode) { var o = Number(q.objective); return o >= 1 && o <= lines.length; }
+    return typeof q.evidence === "string" && quoteInSource_(q.evidence, src);
+  });
+  items.forEach(function (q) { if (objMode) q.evidence = lines[Number(q.objective) - 1]; });
+  var good = verifyQuestions_(items, objMode ? numbered : src, objMode);
+  good.forEach(function (q) {
+    q = shuffleQ_(q);
+    sh.appendRow([fmtDate(new Date()), id, String(q.question), JSON.stringify(q.options), q.correct, "new",
+      String(q.explanation || ""), String(q.evidence || "")]);
+  });
+}
+
+// Right → never again; wrong → resurfaces until answered right.
+function topicResult_(d) {
+  var sh = topicBankSheet_(), rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][1]) === String(d.topicId) && String(rows[i][2]) === String(d.question)) {
+      sh.getRange(i + 1, 6).setValue(d.ok ? "right" : "retry");
+      return;
+    }
+  }
+}
+
+// ---------------- AI: hints, grading, challenges ----------------
+
+// 💡 Hint: a nudge, never the answer.
+function aiHint_(body) {
+  var p = "You are a patient Python tutor inside a study app. " +
+    "The student is stuck on this exercise:\n\nExercise: " + body.hint.task +
+    "\n\nTheir current code/answer:\n" + body.hint.code +
+    "\n\nGive ONE short hint (max 2 sentences) that nudges them toward the " +
+    "solution. Point at the concept or the mistake. NEVER write the full " +
+    "solution or complete code. If you are not sure what is wrong, say what to check instead of guessing. Plain text only.";
+  var h = callGemini_safe_(p, { temperature: 0.3, thinkingBudget: 0 });
+  return { hint: h || "Hint service is busy (rate limit) — try again in a minute." };
+}
+
+// 🧠 Grading for the prompt-writing / free-text exercises (strict version).
+function aiGrade_(body) {
+  var p = "You are grading a short free-text exercise in a study app for a " +
+    "Salesforce support engineer learning AI engineering. Be encouraging but " +
+    "strict.\n\nHARD RULES — pass MUST be false if ANY of these apply:\n" +
+    "- the answer still contains placeholder dots (...) or template text\n" +
+    "- the answer is essentially the unmodified starter/scaffold\n" +
+    "- the answer is under 15 words (unless the task asks for something shorter)\n" +
+    "- the answer doesn't attempt the specific task\n\nTask: " +
+    body.grade.task + "\n\nStudent answer:\n" + body.grade.answer +
+    "\n\nReply ONLY with JSON, no markdown: " +
+    '{"pass": true or false, "feedback": "1-2 sentences: what is good, what to improve"}';
+  var raw = callGemini_safe_(p, { temperature: 0, json: true });
+  if (!raw) return { ok: false, feedback: "Grading service is busy (rate limit) — try again in a minute." };
+  try {
+    var j = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    return { ok: j.pass === true, feedback: String(j.feedback || "").slice(0, 400) };
+  } catch (err) {
+    return { ok: false, feedback: raw.slice(0, 400) };
+  }
+}
+
+// ✨ Endless AI coding challenges with a persistent BANK — quota-friendly on the free tier:
+// 1. Serve an unsolved banked challenge first (ZERO Gemini calls).
+// 2. Only an empty bank triggers generation — saved before it's returned.
+// 3. Solved ones are marked and never served again; the student's passing code is stored.
+// The app ALSO runs every reference solution against its tests in the browser before showing
+// a challenge, and reports broken ones back (challengeBad) so they are never served again.
+// Bank key: the plan week (number) for Python, or the topicId (text) for DSA topics.
+function challengeSheet_() {
+  var ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName("challenges");
+  if (!sh) {
+    sh = ss.insertSheet("challenges");
+    sh.appendRow(["date", "week", "title", "brief", "scaffold", "test", "solution", "status", "my code"]);
+  }
+  return sh;
+}
+
+function serveBanked_(sh, key, clientHas) {
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    var stt = String(rows[i][7]);
+    if (String(rows[i][1]) !== String(key)) continue;
+    if (stt === "solved" || stt === "bad") continue;
+    var title = String(rows[i][2]);
+    if (clientHas.indexOf(title) !== -1) continue;
+    return { title: title, brief: String(rows[i][3]), scaffold: String(rows[i][4]), test: String(rows[i][5]), solution: String(rows[i][6]), banked: 1 };
+  }
+  return null;
+}
+
+function aiChallenge_(body) {
+  var sh = challengeSheet_();
+  var clientHas = body.avoid || [];
+  var key = body.topicId ? String(body.topicId) : Number(body.week);
+  // 1) the bank first — zero Gemini calls
+  var hit = serveBanked_(sh, key, clientHas);
+  if (hit) return hit;
+  // 2) bank dry → ONE call = a batch of CH_BATCH, saved, first one served
+  var err = genChallengeBatch_(sh, key, clientHas, body);
+  if (err) return { error: err };
+  return serveBanked_(sh, key, clientHas) || { error: "bad generation — tap again" };
+}
+
+function genChallengeBatch_(sh, key, clientHas, body) {
+  body = body || {};
+  var isTopic = typeof key === "string";
+  var bankTitles = sh.getDataRange().getValues().slice(1).filter(function (r) { return String(r[1]) === String(key); })
+    .map(function (r) { return String(r[2]); });
+  var avoid = bankTitles.concat(clientHas || []).slice(-60);
+  var who, scope;
+  if (isTopic) {
+    who = "a learner practising data structures and algorithms in Python";
+    scope = "Topic: " + body.theme + ".\nSOURCE for the topic (stay inside it):\n" + String(body.source || "").slice(0, 2000) + "\n";
+  } else {
+    var st = stats();
+    var doneList = st.doneTasks.slice(-12).join("; ") || "(none yet — stick to the week theme basics)";
+    who = "a Salesforce support engineer learning AI engineering, week " + key + " of 16";
+    scope = "Week theme: " + THEMES[key - 1] + ".\nRecently completed lessons: " + doneList + "\n";
+  }
+  var p = "Generate " + CH_BATCH + " DISTINCT small Python coding exercises as a strict JSON array for a study app.\n" +
+    "Student: " + who + ".\n" + scope +
+    "Do NOT repeat these existing exercise titles/ideas: " + (avoid.length ? avoid.join("; ") : "(none)") +
+    "\n\nHARD RULES for EVERY exercise:\n" +
+    "- Pure Python 3 standard library. No input(), no network, no pip installs, no randomness, no time.\n" +
+    "- Asks the student to write ONE small function (5-15 lines); helper classes such as ListNode or TreeNode may be given in the scaffold.\n" +
+    "- brief: state the exact input and output types and what to return for edge cases (empty input, single item).\n" +
+    "- scaffold: the function signature with a short hint comment, body 'return ...' (or a placeholder), and a print() demo call.\n" +
+    "- test: 3-5 plain assert statements with short helpful failure messages, including at least one edge case. Deterministic, no floats that round ambiguously, and only asserts things the brief says.\n" +
+    "- solution: the complete correct code that makes EVERY assert pass. Mentally run each assert against it before answering.\n" +
+    "- Difficulty: solvable in 3-8 minutes on a phone. Vary the concepts across the batch.\n\n" +
+    "Reply ONLY with a JSON array, no markdown fences:\n" +
+    '[{"title": "3-5 words", "brief": "1-2 sentences", "scaffold": "...", "test": "...", "solution": "..."}, ...]';
+  var raw = callGemini_safe_(p, { temperature: 0.4, json: true });
+  if (!raw) return "rate limited — try again in a minute";
+  try {
+    var arr = parseJson_(raw);
+    if (!Array.isArray(arr)) arr = [arr];
+    var added = 0;
+    arr.forEach(function (j) {
+      if (j && j.title && j.scaffold && j.test && j.solution && /assert /.test(String(j.test))) {
+        sh.appendRow([fmtDate(new Date()), key, String(j.title), String(j.brief || ""), String(j.scaffold), String(j.test), String(j.solution), "new", ""]);
+        added++;
+      }
+    });
+    return added ? null : "bad generation — tap again";
+  } catch (err) {
+    return "bad generation — tap again";
+  }
+}
+
+// Pyodide validation failed for a banked challenge → never serve it again.
+function challengeBad_(title) {
+  var sh = challengeSheet_();
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][2]) === String(title)) { sh.getRange(i + 1, 8).setValue("bad"); return; }
+  }
+}
+
+// ⏰ Daily top-up — time-driven trigger on this (clock icon → Add Trigger → refillBanks →
+// time-driven → day timer → 6-7am). Keeps the Python-week banks at target.
+// v10: every step checks the clock first and the whole run stops before the 6-minute
+// Apps Script limit (the old version ran the full 6 minutes and was killed).
+function refillBanks() {
+  var t0 = Date.now();
+  var left = function () { return REFILL_BUDGET_MS - (Date.now() - t0); };
+  var week = stats().week;
+  var qsh = quizBankSheet_();
+  if (left() > 90000 && servableQuiz_(qsh.getDataRange().getValues(), week).length < QUIZ_TARGET) {
+    try { genQuizBatch_(qsh, week); } catch (e) { Logger.log("quiz refill: " + e); }
+  }
+  Logger.log("quiz step done at " + (Date.now() - t0) + " ms");
+  var csh = challengeSheet_();
+  var open = 0, crows = csh.getDataRange().getValues();
+  for (var i = 1; i < crows.length; i++) {
+    var stt = String(crows[i][7]);
+    if (String(crows[i][1]) === String(week) && stt !== "solved" && stt !== "bad") open++;
+  }
+  if (left() > 90000 && open < CH_TARGET) {
+    var err = genChallengeBatch_(csh, week, [], {});
+    if (err) Logger.log("challenge refill: " + err);
+  }
+  Logger.log("refill finished in " + (Date.now() - t0) + " ms");
+}
+
+// Mark a banked challenge solved (never served again) + keep the student's code.
+function challengeSolved_(body) {
+  var sh = challengeSheet_();
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][2]) === String(body.challengeSolved)) {
+      sh.getRange(i + 1, 8).setValue("solved");
+      if (body.code) sh.getRange(i + 1, 9).setValue(String(body.code).slice(0, 2000));
+      return { ok: true };
+    }
+  }
+  return { ok: false, reason: "not in bank" };
+}
+
+// ---------------- nudges & push ----------------
+
+function makeNudge(stage) {
+  const st = stats();
+  const followUp = String(stage) === "2";
+  if (new Date().getDay() === 0) return { send: false, reason: "rest day" };
+  if (st.todayTask === "rest day") return { send: false, reason: "plan complete" };
+  if (followUp && st.tickedToday) return { send: false, reason: "already studied" };
+  const prompt =
+    "Write a push notification (under 45 words) for Mohammad, retraining from " +
+    "Salesforce manager to AI engineer. " + st.done +
+    " of 96 plan lessons done. Tonight's 35-minute task: " + st.todayTask + ". " +
+    (followUp
+      ? "This is a gentle 9pm follow-up: he has not started yet tonight. Encourage starting now, even a small version. Never guilt-trip."
+      : "This is the 8pm kickoff nudge. Be concrete and motivating.") +
+    " If the task clearly needs a PC and he might be out, suggest a phone alternative " +
+    "(Colab, or a quiz in the app). No emoji, no greetings.";
+  let msg;
+  try { msg = callGemini(prompt, { temperature: 0.8, thinkingBudget: 0 }).trim(); }
+  catch (err) { msg = "Tonight: " + st.todayTask + " (35 min). Small steps count."; }
+  return { send: true, title: followUp ? "Still time tonight" : "Study time", message: msg };
+}
+
+function pushSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let s = ss.getSheetByName(PUSH_SHEET);
+  if (!s) s = ss.insertSheet(PUSH_SHEET);
+  return s;
+}
+
+// A device is identified by its endpoint URL. One row per device:
+// re-subscribing UPDATES the row instead of appending a duplicate.
+function saveSub_(sub) {
+  var sh = pushSheet();
+  var rows = sh.getDataRange().getValues();
+  var ep = (sub && sub.endpoint) || "";
+  for (var i = 0; i < rows.length; i++) {
+    var t = String(rows[i][0]);
+    if (t.indexOf("{") !== 0) continue;
+    try {
+      if (JSON.parse(t).endpoint === ep) {
+        sh.getRange(i + 1, 1, 1, 2).setValues([[JSON.stringify(sub), fmtDate(new Date())]]);
+        return;
+      }
+    } catch (e) {}
+  }
+  sh.appendRow([JSON.stringify(sub), fmtDate(new Date())]);
+}
+
+// Dedupe by endpoint at read time too — belt and braces.
+function getSubs() {
+  var seen = {};
+  return pushSheet().getDataRange().getValues()
+    .map(function (r) { return String(r[0]); })
+    .filter(function (t) { return t.indexOf("{") === 0; })
+    .map(function (t) { try { return JSON.parse(t); } catch (e) { return null; } })
+    .filter(function (s) {
+      if (!s || !s.endpoint || seen[s.endpoint]) return false;
+      seen[s.endpoint] = 1;
+      return true;
+    });
+}
+
+// One-time cleanup: run this once from the editor (▶) to collapse the
+// existing duplicate rows in the push tab down to one per device.
+function cleanupSubs() {
+  var subs = getSubs();   // already deduped
+  var sh = pushSheet();
+  sh.clearContents();
+  subs.forEach(function (s) { sh.appendRow([JSON.stringify(s), fmtDate(new Date())]); });
+  Logger.log("push tab rewritten: " + subs.length + " unique device(s)");
+}
+
+// ---------------- shared helpers ----------------
+
+// Where the learner really is: the first UNTICKED lesson row (ids like w3t2). No calendar maths,
+// so a restart or a gap never leaves the prompts talking about the wrong week.
+// Only lesson rows count as "done"; video/exercise/topic ticks only count as "studied today".
+function stats() {
+  const rows = sheet().getDataRange().getValues();
+  const today = fmtDate(new Date());
+  let done = 0, tickedToday = false, doneTasks = [], next = null;
+  rows.forEach(function (r, i) {
+    if (i === 0) return;
+    const has = r[DATE_COL - 1] !== "";
+    if (has && fmtDate(r[DATE_COL - 1]) === today) tickedToday = true;
+    if (!/^w\d+t\d+$/.test(String(r[0]))) return;
+    if (has) { done++; doneTasks.push(String(r[3])); }
+    else if (!next) next = { week: Number(r[1]), task: String(r[3]) };
+  });
+  return { week: next ? Math.min(16, Math.max(1, next.week)) : 16, done: done, tickedToday: tickedToday,
+    todayTask: next ? next.task : "rest day", doneTasks: doneTasks };
+}
+
+// Strict Gemini call: throws on failure (quote/quiz/nudge catch it themselves).
+// opts: { temperature, json (force JSON output), thinkingBudget (0 = no "thinking", much faster) }.
+// If the API rejects the extra settings (400), it retries once with a plain request.
+function callGemini(prompt, opts) {
+  opts = opts || {};
+  const key = PropertiesService.getScriptProperties().getProperty("GEMINI_KEY");
+  const models = ["gemini-flash-latest", "gemini-flash-lite-latest"];
+  let lastErr = "";
+  for (let i = 0; i < models.length; i++) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const cfg = {};
+      if (attempt === 0) {
+        if (opts.temperature !== undefined) cfg.temperature = opts.temperature;
+        if (opts.json) cfg.responseMimeType = "application/json";
+        if (opts.thinkingBudget !== undefined) cfg.thinkingConfig = { thinkingBudget: opts.thinkingBudget };
+      }
+      const body = { contents: [{ parts: [{ text: prompt }] }] };
+      if (Object.keys(cfg).length) body.generationConfig = cfg;
+      const res = UrlFetchApp.fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/" + models[i] +
+        ":generateContent?key=" + key,
+        { method: "post", contentType: "application/json", payload: JSON.stringify(body), muteHttpExceptions: true }
+      );
+      const code = res.getResponseCode();
+      if (code === 429) break;                       // rate limited → next model
+      const data = JSON.parse(res.getContentText());
+      if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
+        const parts = data.candidates[0].content.parts.filter(function (p) { return p.text && !p.thought; });
+        if (parts.length) return parts[0].text;
+      }
+      lastErr = res.getContentText().slice(0, 200);
+      if (code !== 400 || !Object.keys(cfg).length) break;   // only a 400 with extras is worth a plain retry
+    }
+  }
+  throw new Error(lastErr ? "Gemini: " + lastErr : "All models rate-limited (429)");
+}
+
+// Soft Gemini call: returns "" on failure (hint/grade/challenge degrade gracefully).
+function callGemini_safe_(prompt, opts) {
+  try { return callGemini(prompt, opts).trim(); }
+  catch (err) { return ""; }
+}
+
+function fmtDate(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  return String(v).slice(0, 10);
+}
+
+function sheet() {
+  return SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+}
+
+function quizSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let s = ss.getSheetByName(QUIZ_SHEET);
+  if (!s) s = ss.insertSheet(QUIZ_SHEET);
+  return s;
+}
+
+function jsonOut(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ---------------- checks you can run from the editor (▶) ----------------
+
+// Run this from the editor to sanity-check the Gemini key.
+function testGemini() {
+  const key = PropertiesService.getScriptProperties().getProperty("GEMINI_KEY");
+  Logger.log("Key present: " + (key ? "yes, starts " + key.slice(0, 6) : "NO — check Script Property name"));
+  Logger.log(callGemini("Say hello in exactly five words", { temperature: 0, thinkingBudget: 0 }));
+}
+
+// No API calls: proves the grounding helpers behave. Run it after pasting this file.
+function testGrounding() {
+  function eq(a, b, msg) { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error("FAIL " + msg + ": " + JSON.stringify(a) + " != " + JSON.stringify(b)); }
+  var good = { question: "What does a hash map give on average?", options: ["O(1) lookup", "O(n) lookup", "O(log n) lookup", "No lookup"], correct: 0 };
+  eq(okQ_(good), true, "valid question accepted");
+  eq(okQ_({ question: "short", options: ["a", "b", "c", "d"], correct: 0 }), false, "short question rejected");
+  eq(okQ_({ question: "A long enough question here?", options: ["a", "a", "c", "d"], correct: 0 }), false, "duplicate options rejected");
+  eq(okQ_({ question: "A long enough question here?", options: ["a", "b", "c"], correct: 0 }), false, "3 options rejected");
+  eq(okQ_({ question: "A long enough question here?", options: ["a", "b", "c", "d"], correct: 4 }), false, "answer index out of range rejected");
+  var s = shuffleQ_({ question: good.question, options: good.options.slice(), correct: 0 });
+  eq(s.options[s.correct], "O(1) lookup", "shuffle keeps the right answer right");
+  var src = "Hash maps and sets give average O(1) lookup, insert and delete. Typical uses: detect duplicates, count frequencies.";
+  eq(quoteInSource_("give average O(1) lookup, insert and delete", src), true, "real quote accepted");
+  eq(quoteInSource_("hash maps always give worst case constant time lookup guaranteed", src), false, "invented quote rejected");
+  Logger.log("testGrounding: all checks passed");
+}

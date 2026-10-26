@@ -2,89 +2,137 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="AI Study">
-<meta name="theme-color" content="#b45309">
+<meta name="theme-color" content="#EEF1F5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0A1220" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon.png">
 <title>AI Study</title>
 <style>
+
+  :root { --bg:#EEF1F5; --card:#fff; --text:#0F1B2D; --muted:#5A6678; --faint:#B7C0CE; --border:#DDE3EB; --border-strong:#C3CCD9; --line:#E6EBF1; --soft:#F5F7FA;
+    --accent:#0F1B2D; --accent-ink:#0F1B2D; --accent-bg:#FFF1BF; --on-accent:#fff; --signal:#F5B800; --signal-ink:#0F1B2D;
+    --ok:#17803D; --ok-bg:#DCF5E4; --ok-ink:#14532D; --err:#DC2626; --err-bg:#FEE2E2; --warn:#F5B800;
+    --chip-bg:#E3E9F2; --chip-ink:#0F1B2D; --colab-bg:#0F1B2D14; --colab-bd:#0F1B2D26; --banner-bg:transparent; --banner-bd:#F5B800; --nav:#FFFFFFEE; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0A1220; --card:#121C2E; --text:#E8EEF7; --muted:#9AA8BE; --faint:#32415A; --border:#22304A; --border-strong:#32415A; --line:#1B2840; --soft:#0F1829;
+    --accent:#F5B800; --accent-ink:#F5B800; --accent-bg:#3A2F08; --on-accent:#0F1B2D;
+    --ok:#17803D; --ok-bg:#12301F; --ok-ink:#86EFAC; --err:#F87171; --err-bg:#3B1A1A;
+    --chip-bg:#1A2638; --chip-ink:#C9D6EA; --colab-bg:#1A2638; --colab-bd:#2A3A52; --nav:#121C2EEE; } }
+  html { color-scheme: light dark; }
+  input[type=text], input[type=url], input[type=date] { background: var(--card); color: var(--text); min-height: 44px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+  .btn, .quizopt, .weekhd { min-height: 44px; }
+  .trk { display: flex; gap: 8px; overflow-x: auto; margin: 0 0 14px; padding-bottom: 2px; }
+  .trk button { flex: none; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 22px; padding: 10px 16px; font-size: 14px; font-weight: 700; min-height: 44px; cursor: pointer; }
+  .trk button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .weekhd.dn { opacity: .65; }
+  .symbar { display: flex; gap: 6px; overflow-x: auto; margin-top: 8px; }
+  .symbar button { flex: none; min-width: 44px; min-height: 44px; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 10px; font: 700 16px ui-monospace, Menlo, monospace; cursor: pointer; }
+  details.obj { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  details.obj summary { cursor: pointer; font-weight: 700; min-height: 32px; }
+  details.obj li { margin: 6px 0 0 18px; }
+  .focus { background: var(--signal); color: var(--signal-ink); border-radius: 26px; padding: 22px 20px 20px; margin-bottom: 14px; }
+  .focus .kicker { font-size: 13px; font-weight: 600; opacity: .75; }
+  .focus h2 { font-size: 26px; font-weight: 800; letter-spacing: -.03em; line-height: 1.12; margin: 8px 0 16px; }
+  .focus .muted { color: var(--signal-ink); opacity: .75; }
+  .route { list-style: none; display: flex; align-items: center; margin: 0 0 16px; }
+  .route li { flex: 1; display: flex; align-items: center; }
+  .route li:last-child { flex: 0; }
+  .route li span { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--signal-ink); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; flex: none; }
+  .route li::after { content: ""; flex: 1; height: 3px; background: var(--signal-ink); opacity: .35; }
+  .route li:last-child::after { display: none; }
+  .route li.on span { background: var(--signal-ink); color: var(--signal); }
+  .route li.now span { box-shadow: 0 0 0 4px #0F1B2D33; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 20px; background: #0F1B2D1F; color: var(--signal-ink); }
+  .taskline .tag { background: var(--chip-bg); color: var(--chip-ink); margin-left: auto; flex: none; }
+  .perf { border-top: 3px dashed #0F1B2D55; margin: 18px -20px 4px; }
+  .focus .btn.primary, .focus .btn.primary.undone { background: var(--signal-ink); color: var(--signal); }
+  .focus .btn.colab, .focus .btn.ghost { background: #0F1B2D1F; color: var(--signal-ink); border: none; }
+
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html { -webkit-text-size-adjust: 100%; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f6f5f2; color: #1c1c1c; padding-bottom: 76px; }
-  .top { padding: max(14px, env(safe-area-inset-top)) 18px 10px; display: flex; justify-content: space-between; align-items: center; }
-  .top h1 { font-size: 18px; }
-  .syncdot { font-size: 11px; color: #888; display: flex; align-items: center; gap: 5px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: #bbb; }
-  .dot.ok { background: #16a34a; } .dot.err { background: #dc2626; } .dot.off { background: #f59e0b; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding-bottom: 104px; line-height: 1.4; }
+  .top { padding: max(18px, env(safe-area-inset-top)) 18px 12px; display: flex; justify-content: space-between; align-items: center; }
+  .top h1 { font-size: 30px; font-weight: 800; letter-spacing: -.03em; }
+  .syncdot { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+  .dot.ok { background: var(--ok); } .dot.err { background: var(--err); } .dot.off { background: var(--warn); }
   main { padding: 0 14px; max-width: 560px; margin: 0 auto; }
-  .card { background: #fff; border: 1px solid #e7e4de; border-radius: 14px; padding: 16px; margin-bottom: 12px; }
-  .muted { color: #777; font-size: 12.5px; }
-  .chip { display: inline-block; font-size: 11px; padding: 3px 9px; border-radius: 20px; background: #eef2ff; color: #3730a3; font-weight: 600; }
-  .chip.pc { background: #fef3c7; color: #92400e; }
-  .statrow { display: flex; gap: 10px; margin-bottom: 12px; }
-  .stat { flex: 1; background: #fff; border: 1px solid #e7e4de; border-radius: 14px; padding: 12px; text-align: center; }
-  .stat b { font-size: 20px; color: #b45309; display: block; }
-  .stat span { font-size: 10.5px; color: #888; text-transform: uppercase; letter-spacing: .03em; }
-  .btn { display: block; width: 100%; border: none; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 600; cursor: pointer; text-align: center; text-decoration: none; margin-top: 10px; }
-  .btn.primary { background: #16a34a; color: #fff; }
-  .btn.primary.undone { background: #b45309; }
-  .btn.colab { background: #fff3e0; color: #b45309; border: 1px solid #f0d9b5; }
-  .btn.ghost { background: #f1efe9; color: #444; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 18px; margin-bottom: 14px; }
+  .muted { color: var(--muted); font-size: 12.5px; }
+  .chip { display: inline-block; font-size: 12px; padding: 4px 10px; border-radius: 20px; background: var(--chip-bg); color: var(--chip-ink); font-weight: 600; }
+  .chip.pc { background: var(--accent-bg); color: var(--accent-ink); }
+  .statrow { display: flex; gap: 18px; margin: 0 4px 18px; padding: 10px 0 0; border-top: 2px solid var(--text); }
+  .stat { flex: 1; text-align: left; }
+  .stat b { font-size: 28px; font-weight: 800; letter-spacing: -.03em; font-variant-numeric: tabular-nums; color: var(--text); display: block; line-height: 1.1; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  .btn { display: block; width: 100%; border: none; border-radius: 14px; padding: 15px; font-size: 16px; font-weight: 700; cursor: pointer; text-align: center; text-decoration: none; margin-top: 10px; }
+  .btn.primary { background: var(--ok); color: #fff; }
+  .btn.primary.undone { background: var(--accent); color: var(--on-accent); }
+  .btn.colab { background: var(--colab-bg); color: var(--text); border: 1px solid var(--colab-bd); }
+  .btn.ghost { background: var(--line); color: var(--text); }
   pre.code { background: #1f2937; color: #e5e7eb; border-radius: 10px; padding: 12px; font-size: 12px; overflow-x: auto; margin-top: 10px; font-family: ui-monospace, Menlo, monospace; line-height: 1.5; }
-  .taskline { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-bottom: 1px solid #f1efe9; font-size: 14px; }
+  .taskline { display: flex; align-items: center; gap: 14px; padding: 10px 0; font-size: 15px; position: relative; }
+  .taskline::before { content: ""; position: absolute; left: 12.5px; top: 0; bottom: 0; width: 3px; background: var(--signal); }
+  .taskline:first-child::before { top: 50%; } .taskline:last-child::before { bottom: 50%; }
   .taskline:last-child { border-bottom: none; }
-  .tick { width: 24px; height: 24px; min-width: 24px; border: 2px solid #d1cec6; border-radius: 8px; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 15px; color: #fff; margin-top: 1px; }
-  .tick.on { background: #16a34a; border-color: #16a34a; }
-  .taskline.done .txt { text-decoration: line-through; color: #aaa; }
-  .weekhd { display: flex; justify-content: space-between; align-items: center; padding: 13px 16px; background: #fff; border: 1px solid #e7e4de; border-radius: 14px; margin-bottom: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }
+  .tick { width: 28px; height: 28px; min-width: 28px; border: 3px solid var(--signal); border-radius: 50%; background: var(--card); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; color: #fff; margin-top: 0; position: relative; z-index: 1; }
+  .tick::after, .vtick::after { content: ""; position: absolute; inset: -10px; }
+  .vtick { position: relative; }
+  .tick.on { background: var(--ok); border-color: var(--ok); }
+  .taskline.done .txt { text-decoration: line-through; color: var(--muted); }
+  .weekhd { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; margin-bottom: 8px; cursor: pointer; font-size: 15px; font-weight: 700; }
   .weekhd .muted { font-weight: 400; }
-  .weekhd.cur { border: 2px solid #b45309; }
-  .weekbody { display: none; padding: 4px 16px 12px; background: #fff; border: 1px solid #e7e4de; margin: -6px 0 8px; border-top: none; border-radius: 0 0 14px 14px; }
+  .weekhd.cur { border: 2px solid var(--signal); }
+  .weekbody { display: none; padding: 4px 16px 12px; background: var(--card); border: 1px solid var(--border); margin: -6px 0 8px; border-top: none; border-radius: 0 0 14px 14px; }
   .open + .weekbody { display: block; }
-  .phasehd { font-size: 12px; font-weight: 700; color: #92400e; text-transform: uppercase; letter-spacing: .05em; margin: 16px 0 8px; }
+  .phasehd { font-size: 13px; font-weight: 700; color: var(--muted); margin: 22px 4px 8px; }
   .quizq { font-size: 15px; font-weight: 600; margin-bottom: 12px; line-height: 1.4; }
-  .quizopt { display: block; width: 100%; text-align: left; background: #f8f7f4; border: 1.5px solid #e7e4de; border-radius: 10px; padding: 12px; font-size: 14px; margin-bottom: 8px; cursor: pointer; }
-  .quizopt.right { background: #dcfce7; border-color: #16a34a; }
-  .quizopt.wrong { background: #fee2e2; border-color: #dc2626; }
-  .rsrc { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px solid #f1efe9; font-size: 14px; text-decoration: none; color: #1c1c1c; }
+  .quizopt { display: block; width: 100%; text-align: left; background: var(--soft); border: 1.5px solid var(--border); border-radius: 10px; padding: 12px; font-size: 14px; margin-bottom: 8px; cursor: pointer; }
+  .quizopt.right { background: var(--ok-bg); border-color: var(--ok); }
+  .quizopt.wrong { background: var(--err-bg); border-color: var(--err); }
+  .rsrc { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 14px; text-decoration: none; color: var(--text); }
   .rsrc:last-child { border-bottom: none; }
-  .rsrc small { color: #888; display: block; font-size: 11.5px; }
-  input[type=text], input[type=url] { width: 100%; padding: 12px; border: 1px solid #d1cec6; border-radius: 10px; font-size: 14px; margin-top: 6px; }
-  nav { position: fixed; bottom: 0; left: 0; right: 0; background: #ffffffee; backdrop-filter: blur(8px); border-top: 1px solid #e7e4de; display: flex; padding-bottom: env(safe-area-inset-bottom); }
-  nav button { flex: 1; background: none; border: none; padding: 10px 0 8px; font-size: 10.5px; color: #999; cursor: pointer; }
-  nav button.act { color: #b45309; font-weight: 700; }
-  nav button span { display: block; font-size: 20px; margin-bottom: 1px; }
-  .banner { background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 11px 14px; font-size: 13px; color: #92400e; margin-bottom: 12px; font-style: italic; min-height: 42px; }
-  .spin { text-align: center; color: #999; font-size: 13px; padding: 18px 0; }
+  .rsrc small { color: var(--muted); display: block; font-size: 11.5px; }
+  input[type=text], input[type=url], input[type=date] { width: 100%; padding: 12px; border: 1px solid var(--border-strong); border-radius: 10px; font-size: 14px; margin-top: 6px; }
+  nav { position: fixed; bottom: max(10px, env(safe-area-inset-bottom)); left: 12px; right: 12px; max-width: 536px; margin: 0 auto; background: var(--nav); backdrop-filter: blur(14px); border: 1px solid var(--border); border-radius: 30px; display: flex; gap: 4px; padding: 6px; box-shadow: 0 10px 30px #0F1B2D26; }
+  nav button { flex: 1; background: none; border: none; border-radius: 24px; padding: 8px 0 6px; font-size: 11px; font-weight: 600; color: var(--muted); cursor: pointer; }
+  nav button.act { background: var(--accent); color: var(--on-accent); font-weight: 700; }
+  nav button { min-height: 56px; }
+  nav button svg { display: block; width: 24px; height: 24px; margin: 0 auto 3px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .banner { background: var(--banner-bg); border: none; border-left: 4px solid var(--banner-bd); border-radius: 0; padding: 4px 0 4px 14px; font-size: 14px; color: var(--muted); margin: 0 4px 16px; font-style: normal; min-height: 0; }
+  .spin { text-align: center; color: var(--muted); font-size: 13px; padding: 18px 0; }
   .vidbox { margin-top: 10px; }
   .vfacade { position: relative; aspect-ratio: 16/9; border-radius: 12px; overflow: hidden; background: #000; cursor: pointer; }
   .vfacade img { width: 100%; height: 100%; object-fit: cover; opacity: .85; display: block; }
-  .vplay { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 54px; height: 54px; border-radius: 50%; background: #b45309ee; color: #fff; font-size: 22px; display: flex; align-items: center; justify-content: center; padding-left: 4px; }
+  .vplay { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 54px; height: 54px; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: 22px; display: flex; align-items: center; justify-content: center; padding-left: 4px; }
   .vdur { position: absolute; right: 8px; bottom: 8px; background: #000c; color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 5px; }
   .vframe { aspect-ratio: 16/9; border-radius: 12px; overflow: hidden; background: #000; }
   .vframe iframe { width: 100%; height: 100%; border: none; display: block; }
   .vmeta { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 2px 0; }
   .vtitle { font-size: 13px; font-weight: 600; line-height: 1.35; }
-  .vtick { border: 1.5px solid #d1cec6; background: #fff; border-radius: 8px; padding: 6px 10px; font-size: 12px; color: #666; cursor: pointer; white-space: nowrap; }
-  .vtick.on { background: #16a34a; border-color: #16a34a; color: #fff; }
-  .vrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f1efe9; cursor: pointer; }
+  .vtick { border: 1.5px solid var(--border-strong); background: var(--card); border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+  .vtick.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .vrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
   .vrow:last-child { border-bottom: none; }
   .vrow .vthumb { width: 92px; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; }
   .vrow .vinfo { flex: 1; font-size: 13px; line-height: 1.35; }
-  .vrow .vinfo small { display: block; color: #888; font-size: 11px; margin-top: 2px; }
-  .vrow.seen .vinfo { color: #999; }
+  .vrow .vinfo small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .vrow.seen .vinfo { color: var(--muted); }
   .vlib { max-height: 62vh; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
-  .exbadge { width: 34px; height: 34px; min-width: 34px; border-radius: 10px; background: #f1efe9; display: flex; align-items: center; justify-content: center; font-size: 15px; }
-  .exbadge.on { background: #dcfce7; }
+  .exbadge { width: 34px; height: 34px; min-width: 34px; border-radius: 10px; background: var(--line); display: flex; align-items: center; justify-content: center; font-size: 15px; }
+  .exbadge.on { background: var(--ok-bg); }
   .pybox { margin-top: 4px; }
   textarea.pyed { width: 100%; min-height: 170px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; line-height: 1.55; background: #1f2937; color: #e5e7eb; border: none; border-radius: 10px; padding: 12px; margin-top: 8px; resize: vertical; white-space: pre; }
   pre.pyout { background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: 12px; font-size: 12.5px; font-family: ui-monospace, Menlo, monospace; margin-top: 8px; white-space: pre-wrap; word-break: break-word; }
   .btnrow { display: flex; gap: 8px; }
   .btnrow .btn { margin-top: 8px; }
-  .expass { color: #16a34a; font-weight: 700; font-size: 12px; }
+  .expass { color: var(--ok); font-weight: 700; font-size: 12px; }
   h2 { font-size: 16px; margin-bottom: 10px; }
 </style>
 </head>
@@ -95,14 +143,20 @@
 </div>
 <main id="view"></main>
 <nav>
-  <button id="nav-today" class="act" onclick="go('today')"><span>🎯</span>Today</button>
-  <button id="nav-plan" onclick="go('plan')"><span>🗓️</span>Plan</button>
-  <button id="nav-learn" onclick="go('learn')"><span>🧠</span>Learn</button>
-  <button id="nav-set" onclick="go('set')"><span>⚙️</span>Sync</button>
+  <button id="nav-today" class="act" onclick="go('today')"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>Today</button>
+  <button id="nav-plan" onclick="go('plan')"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Plan</button>
+  <button id="nav-learn" onclick="go('learn')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 5h6a4 4 0 0 1 4 4v11a3 3 0 0 0-3-3H2z"/><path d="M22 5h-6a4 4 0 0 0-4 4v11a3 3 0 0 1 3-3h7z"/></svg>Learn</button>
+  <button id="nav-set" onclick="go('set')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.5 6.2M3 12A9 9 0 0 1 18.5 5.8"/><path d="M18.5 2v4h-4M5.5 22v-4h4"/></svg>Sync</button>
 </nav>
 
 <script>
-const START = new Date(2026, 6, 6);
+// Plan start date: set on first use, editable in the Sync tab (so "behind" is measured from when you actually began).
+const START = (() => {
+  let v = ""; try { v = localStorage.getItem("start") || ""; } catch (e) {}
+  if (!/^\d{4}-\d\d-\d\d$/.test(v)) { v = localDate(); try { localStorage.setItem("start", v); } catch (e) {} }
+  const [y, m, d] = v.split("-").map(Number);
+  return new Date(y, m - 1, d);
+})();
 const COLAB = "https://colab.new";
 const QUOTES = [
   "35 minutes tonight beats 5 planned hours this weekend.",
@@ -1088,6 +1142,174 @@ function accStats(w) {
   return { wr: wk.r, ww: wk.w, tr: tr, tw: tw };
 }
 
+// ---- Tracks: topics with videos, AI quiz and coding practice (content/*.json) ----
+// Each topic gets a numeric key (base + index) so the existing exercise code, which is keyed by week
+// number, works unchanged: week numbers are 1-16, DSA topics are 101+, Salesforce 201+, SQL 301+.
+const TRACKS = [
+  { id: "dsa", name: "DSA", file: "content/dsa-videos.json", base: 100, today: true },   // today: shows a "next topic" card on Today
+  { id: "sf", name: "Salesforce Admin", file: "content/salesforce-admin-videos.json", base: 200, today: true },
+  { id: "sql", name: "SQL", file: "content/sql-videos.json", base: 300 }
+];
+const TR = {};
+let learnTrack = localStorage.getItem("lt") || "py", curTopic = 0, tq = {};
+
+async function loadTracks() {
+  for (const t of TRACKS) {
+    let d = null;
+    try {
+      d = await (await fetch(t.file)).json();
+      localStorage.setItem("trk_" + t.id, JSON.stringify(d));
+    } catch (e) {
+      try { d = JSON.parse(localStorage.getItem("trk_" + t.id)); } catch (e2) {}
+    }
+    if (!d) continue;
+    const topics = [];
+    const add = (section, id, o, obj) => topics.push({ id: t.id + "." + id, title: o.title, section: section, videos: o.videos || [],
+      ex: o.exercises || [], focus: o.focus || "", obj: obj || [], key: t.base + topics.length + 1 });
+    if (d.sections) Object.values(d.sections).forEach(sec => Object.entries(sec.topics).forEach(([id, o]) =>
+      add(sec.title + " · " + sec.weight + "% of exam", id, o, sec.objectives)));
+    else Object.entries(d.topics).forEach(([id, o]) => add("", id, o));
+    TR[t.id] = { name: t.name, topics: topics };
+    topics.forEach(tp => { EX[tp.key] = tp.ex.map(e => ({ t: e.t, q: e.q, c: e.c, test: e.test })); });
+  }
+}
+
+const topicByKey = k => { for (const id in TR) { const f = TR[id].topics.find(x => x.key === k); if (f) return f; } return null; };
+const trackOf = tp => tp.id.split(".")[0];
+const tDone = tp => !!state[tp.id + ".done"];
+const tSeen = (tp, i) => !!state[tp.id + ".v" + i];
+const nextTopic = id => ((TR[id] || {}).topics || []).find(x => !tDone(x)) || null;
+
+function flip(k) {
+  if (state[k]) { delete state[k]; push(k, null); }
+  else { const d = localDate(); state[k] = d; push(k, d); }
+  save();
+}
+function toggleTopicDone(key) { flip(topicByKey(key).id + ".done"); render(); }
+function toggleTv(key, i, btn) {
+  const k = topicByKey(key).id + ".v" + i;
+  flip(k);
+  if (document.querySelector(".vframe") || document.querySelector(".pybox")) {
+    btn.classList.toggle("on", !!state[k]); btn.textContent = state[k] ? "✓ Watched" : "Mark watched";
+  } else render();
+}
+function playTv(key, i, id) {
+  const f = document.querySelector(`#tv_${key}_${i} .vfacade`);
+  if (f) f.outerHTML = `<div class="vframe"><iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1&playsinline=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>`;
+}
+function tvCard(tp, i) {
+  const v = tp.videos[i], seen = tSeen(tp, i);
+  return `<div class="vidbox" id="tv_${tp.key}_${i}">
+    <div class="vfacade" onclick="playTv(${tp.key},${i},'${v[1]}')">
+      <img src="https://i.ytimg.com/vi/${v[1]}/hqdefault.jpg" alt="" loading="lazy">
+      <div class="vplay">▶</div><span class="vdur">${v[2]}</span>
+    </div>
+    <div class="vmeta"><span class="vtitle">${esc(v[0])}<small class="muted" style="display:block">${esc(v[3] || "")}</small></span>
+      <button class="vtick ${seen ? 'on' : ''}" onclick="toggleTv(${tp.key},${i},this)">${seen ? '✓ Watched' : 'Mark watched'}</button>
+    </div></div>`;
+}
+
+function openTopic(key) { curTopic = key; learnTrack = trackOf(topicByKey(key)); tq = {}; tab = "learn"; render(); window.scrollTo(0, 0); }
+function closeTopic() { curTopic = 0; render(); }
+function setTrack(id) {
+  learnTrack = id; curTopic = 0;
+  try { localStorage.setItem("lt", id); } catch (e) {}
+  if (id === "py" && cfg() && !curQ && !qBusy && !qErr) nextQ();
+  render();
+}
+
+// AI quiz for one topic. The request carries the topic's own source text (official outline or a vetted summary);
+// the backend must write from that text only and echo topicId back, otherwise we refuse the answer.
+async function topicQuiz(key) {
+  const tp = topicByKey(key);
+  tq = { key: key, busy: true }; render();
+  try {
+    const src = tp.obj.length ? tp.obj.join("\n") : tp.focus;
+    const r = await fetch(cfg(), { method: "POST", body: JSON.stringify({ quiz: "next", week: curWeek(),
+      track: trackOf(tp), topicId: tp.id, topic: tp.title, section: tp.section, source: src }) });
+    const d = await r.json();
+    if (d.topicId !== tp.id) throw new Error("backend");
+    if (!d.question || !d.options) throw new Error(d.error ? String(d.error).slice(0, 80) : "bad question");
+    tq = { key: key, q: d };
+  } catch (e) { tq = { key: key, err: e.message }; }
+  render();
+}
+function answerT(btn, i) {
+  if (tq.done || !tq.q) return;
+  tq.done = 1;
+  const right = Number(tq.q.correct), tp = topicByKey(tq.key);
+  document.querySelectorAll(".quizopt").forEach((b, j) => { if (j === right) b.classList.add("right"); });
+  if (i !== right) btn.classList.add("wrong");
+  track("quiz", tp.title, i === right, tp.key);
+  fetch(cfg(), { method: "POST", body: JSON.stringify({ quiz: "topicResult", topicId: tp.id, question: tq.q.question, ok: i === right }) }).catch(() => {});
+  const why = document.getElementById("tqWhy");
+  if (why) why.textContent = [tq.q.explanation, tq.q.evidence ? "Source: “" + tq.q.evidence + "”" : ""].filter(Boolean).join(" ");
+}
+function tqCard(tp) {
+  if (!cfg()) return `<div class="card"><h2>AI quiz</h2><p class="muted">Connect sync in the Sync tab to get AI questions for this topic.</p></div>`;
+  if (tq.key !== tp.key) return `<div class="card"><h2>AI quiz</h2><p class="muted">Questions are written from this topic's ${tp.obj.length ? "official exam outline" : "vetted summary"} only.</p>
+    <button class="btn primary undone" onclick="topicQuiz(${tp.key})">Quiz me on this topic</button></div>`;
+  if (tq.busy) return `<div class="card"><div class="spin">Writing a question from the source…</div></div>`;
+  if (tq.err) return `<div class="card"><div class="muted">${tq.err === "backend"
+    ? "Backend update needed for topic quizzes. See backend/README.md in the repo."
+    : "Couldn't get a question (" + esc(tq.err) + ")."}</div><button class="btn ghost" onclick="topicQuiz(${tp.key})">Try again</button></div>`;
+  return `<div class="card"><div class="muted" style="margin-bottom:8px">AI quiz · ${esc(tp.title)}</div>
+    <div class="quizq">${esc(tq.q.question)}</div>
+    ${tq.q.options.map((o, i) => `<button class="quizopt" onclick="answerT(this, ${i})">${esc(o)}</button>`).join("")}
+    <p class="muted" id="tqWhy"></p>
+    <button class="btn ghost" onclick="topicQuiz(${tp.key})">Next question</button></div>`;
+}
+
+function rBar() {
+  const items = [["py", "Python & AI"]].concat(TRACKS.filter(t => TR[t.id]).map(t => [t.id, t.name]));
+  return `<div class="trk">${items.map(([id, n]) => `<button class="${id === learnTrack ? 'on' : ''}" onclick="setTrack('${id}')">${esc(n)}</button>`).join("")}</div>`;
+}
+function rTrack(id) {
+  const L = (TR[id] || {}).topics || [];
+  if (!L.length) return `<div class="card"><div class="muted">Loading topics… if this stays empty, open this track once while online.</div></div>`;
+  let h = `<div class="card"><h2>${esc(TR[id].name)}</h2><p class="muted">${L.filter(tDone).length}/${L.length} topics done</p></div>`, sec = null;
+  L.forEach(tp => {
+    if (tp.section !== sec) { sec = tp.section; if (sec) h += `<div class="phasehd">${esc(sec)}</div>`; }
+    h += `<div class="weekhd ${tDone(tp) ? 'dn' : ''}" onclick="openTopic(${tp.key})"><span>${tDone(tp) ? '✓ ' : ''}${esc(tp.title)}</span>
+      <span class="muted">${tp.videos.length} video${tp.videos.length === 1 ? '' : 's'}${tp.ex.length ? ' · code' : ''}</span></div>`;
+  });
+  return h;
+}
+function rTopic() {
+  const tp = topicByKey(curTopic);
+  if (!tp) { curTopic = 0; return ""; }
+  const exl = EX[tp.key] || [], code = trackOf(tp) === "dsa";
+  return `<button class="btn ghost" style="margin:0 0 12px" onclick="closeTopic()">← ${esc(TR[trackOf(tp)].name)}</button>
+    <div class="card"><h2>${esc(tp.title)}</h2><div class="muted">${esc(tp.section)}</div>
+      ${tp.focus ? `<p style="margin-top:10px;font-size:14px">${esc(tp.focus)}</p>` : ""}
+      ${tp.obj.length ? `<details class="obj"><summary>What the exam covers in this section</summary><ul>${tp.obj.map(o => `<li>${esc(o)}</li>`).join("")}</ul></details>` : ""}
+      <button class="btn ${tDone(tp) ? 'ghost' : 'primary undone'}" onclick="toggleTopicDone(${tp.key})">${tDone(tp) ? '✓ Topic done · tap to undo' : 'Mark topic done'}</button></div>
+    ${tp.videos.length ? `<div class="card"><h2>Watch</h2>${tp.videos.map((_, i) => tvCard(tp, i)).join('<div style="height:14px"></div>')}</div>`
+      : `<div class="card"><div class="muted">No short video checked for this topic yet.</div></div>`}
+    ${tqCard(tp)}
+    ${(code || exl.length) ? `<div class="card"><h2>Practice</h2>
+      <p class="muted" style="margin-bottom:6px">${exl.filter((_, i) => exSolved(tp.key, i)).length}/${exl.length} solved · real Python, right in the app</p>
+      ${exl.map((_, i) => exRow(tp.key, i)).join("")}
+      <button class="btn ghost" onclick="newChallenge(${tp.key}, this)">✨ New AI challenge</button></div>` : ""}`;
+}
+function alsoToday() {
+  return TRACKS.filter(t => t.today).map(t => {
+    const tp = nextTopic(t.id); if (!tp) return "";
+    const L = TR[t.id].topics;
+    return `<div class="card"><div class="muted">${esc(TR[t.id].name)} · topic ${L.filter(tDone).length + 1} of ${L.length}</div>
+      <h2 style="margin:6px 0 4px">${esc(tp.title)}</h2><div class="muted">${esc(tp.section)}</div>
+      <button class="btn primary undone" onclick="openTopic(${tp.key})">Open topic</button></div>`;
+  }).join("");
+}
+
+function insSym(wk, i, sym) {
+  const ta = document.getElementById("pyed_" + wk + "_" + i); if (!ta) return;
+  const a = ta.selectionStart, b = ta.selectionEnd;
+  ta.value = ta.value.slice(0, a) + sym + ta.value.slice(b);
+  ta.selectionStart = ta.selectionEnd = a + (sym.length === 2 ? 1 : sym.length);
+  ta.focus();
+}
+
 // ---- Videos ----
 function vidWatched(wk, d) { return !!state["w" + wk + "v" + d]; }
 
@@ -1280,11 +1502,14 @@ async function newChallenge(wk, btn) {
     const py = await ensurePy();
     for (let attempt = 0; attempt < 2; attempt++) {
       if (btn) btn.textContent = "✨ Writing you a challenge…";
-      const doneTasks = W[wk-1].ts.filter((_, i) => state["w" + wk + "t" + i]);
+      const tp = wk > 16 ? topicByKey(wk) : null;   // 101+ / 201+ are track topics, 1-16 are plan weeks
+      const doneTasks = tp ? [] : W[wk-1].ts.filter((_, i) => state["w" + wk + "t" + i]);
       const avoid = (EX[wk] || []).map(e => e.t);
       const r = await fetch(cfg(), { method: "POST", body: JSON.stringify({
-        challenge: "next", week: wk, theme: W[wk-1].th, done: doneTasks, avoid: avoid }) });
+        challenge: "next", week: tp ? curWeek() : wk, theme: tp ? tp.title : W[wk-1].th, done: doneTasks, avoid: avoid,
+        track: tp ? trackOf(tp) : "py", topicId: tp ? tp.id : "", source: tp ? tp.focus : "" }) });
       const d = await r.json();
+      if (tp && d.topicId !== tp.id) throw new Error("backend");
       if (!d.scaffold || !d.test || !d.solution) throw new Error(d.error ? String(d.error).slice(0, 60) : "backend");
       py.globals.set("_user_code", d.solution);
       py.globals.set("_test_code", d.test);
@@ -1369,6 +1594,7 @@ function exBox(wk, i) {
       <button class="vtick" onclick="closeEx()">✕ close</button></div>
     <p class="muted">${esc(ex.q)}</p>
     <textarea class="pyed" id="pyed_${wk}_${i}" spellcheck="false" autocapitalize="off" autocorrect="off" onkeydown="pyTab(event)">${esc(ex.c)}</textarea>
+    <div class="symbar">${["    ", ":", "()", "[]", "{}", '""', "'", "=", "#", "_", ".", ","].map(x => `<button type="button" onmousedown="event.preventDefault()" onclick="insSym(${wk},${i},this.dataset.s)" data-s="${x.replace(/"/g, "&quot;")}" aria-label="insert ${x.trim() || 'tab'}">${x.trim() || "⇥"}</button>`).join("")}</div>
     <div class="btnrow">${ex.g
       ? `<button class="btn primary undone" onclick="gradeEx(${wk},${i})">🧠 Get AI feedback</button>`
       : `<button class="btn ghost" onclick="runEx(${wk},${i},'run')">▶ Run</button>
@@ -1402,28 +1628,31 @@ function rToday() {
   let dispW = 0, dispD = 0;
   const pos = position();
   if (!pos) {
-    card = `<div class="card"><h2>Everything's ticked 🎉</h2><p class="muted">All 96 sessions done. Take a quiz in Learn, generate an AI challenge — or rest, you've earned it.</p></div>`;
+    card = `<div class="card"><h2>Everything's ticked</h2><p class="muted">All 96 sessions done. Take a quiz in Learn, generate an AI challenge — or rest, you've earned it.</p></div>`;
   } else {
     dispW = pos.week; dispD = pos.dow;
     const wk = W[pos.week-1];
     const delta = s.done - expectedSessions();
-    const pace = t.pre ? `<span class="chip" style="background:#dcfce7;color:#166534">🚀 head start</span>`
-      : delta > 0 ? `<span class="chip" style="background:#dcfce7;color:#166534">⚡ ${delta} ahead</span>`
-      : delta === 0 ? `<span class="chip" style="background:#dcfce7;color:#166534">✓ on track</span>`
-      : `<span class="chip pc">⏳ ${-delta} behind · one session catches up</span>`;
-    const topNote = t.pre ? `<p class="muted" style="margin-bottom:8px">Program starts Monday 6 July — or start right now:</p>`
-      : t.rest ? `<p class="muted" style="margin-bottom:8px">☀️ Sunday — rest day. Everything below is optional; it'll wait for Monday.</p>` : "";
-    card = `<div class="card">
+    const pace = t.pre ? `<span class="tag">Head start</span>`
+      : delta > 0 ? `<span class="tag">${delta} ahead</span>`
+      : delta === 0 ? `<span class="tag">On track</span>`
+      : `<span class="tag">${-delta} behind · one session catches up</span>`;
+    const topNote = t.pre ? `<p class="muted" style="margin-bottom:8px">Plan starts ${START.toDateString()} — or start right now:</p>`
+      : t.rest ? `<p class="muted" style="margin-bottom:8px">Sunday is a rest day. Everything below is optional.</p>` : "";
+    const route = wk.ts.map((_, i) => `<li class="${state["w"+pos.week+"t"+i] ? "on" : (i === pos.dow-1 ? "now" : "")}"><span>${i+1}</span></li>`).join("");
+    card = `<section class="focus">
       ${topNote}
-      <div class="muted">Week ${pos.week} of 16 · ${esc(wk.th)} · Lesson ${pos.dow} of 6 ${pace}</div>
-      <h2 style="margin:8px 0 6px">${esc(pos.task)}</h2>
-      <span class="chip ${pos.phone?'':'pc'}">${pos.phone ? "📱 phone-friendly" : "💻 best on PC"}</span>
-      ${wk.code ? `<a class="btn colab" href="${COLAB}" target="_blank">▶ Open Google Colab</a>
-      <button class="btn ghost" onclick="copyCode(${pos.week-1}, this)">📋 Copy this week's starter code</button>
+      <div class="kicker">Week ${pos.week} of 16 · ${esc(wk.th)}</div>
+      <h2>${esc(pos.task)}</h2>
+      <ol class="route" aria-label="This week's lessons">${route}</ol>
+      <div class="tags"><span class="tag">${pos.phone ? "Phone-friendly" : "Best on PC"}</span>${pace}</div>
+      <div class="perf"></div>
+      ${wk.code ? `<a class="btn colab" href="${COLAB}" target="_blank">Open Google Colab</a>
+      <button class="btn ghost" onclick="copyCode(${pos.week-1}, this)">Copy this week's starter code</button>
       <pre class="code">${esc(wk.code)}</pre>` : ""}
-      ${!pos.phone ? `<p class="muted" style="margin-top:10px">Phone-only tonight? Run the starter code in Colab, or take a quiz in Learn — the PC part can wait for the weekend.</p>` : ""}
+      ${!pos.phone ? `<p class="muted" style="margin-top:10px">Phone-only tonight? Run the starter code in Colab, or take a quiz in Learn. The PC part can wait for the weekend.</p>` : ""}
       <button class="btn primary undone" onclick="toggle('${pos.id}')">Mark lesson done</button>
-    </div>`;
+    </section>`;
   }
   let vidSec = "";
   if (dispW) {
@@ -1453,7 +1682,7 @@ function rToday() {
     <div class="stat"><b>${s.done}/${s.total}</b><span>sessions</span></div>
     <div class="stat"><b>${s.pct}%</b><span>complete</span></div>
   </div>
-  <div class="banner" id="quoteBanner">“<span id="quoteTxt">${esc(q)}</span>”</div>${card}${vidSec}${exSec}`;
+  <div class="banner" id="quoteBanner">“<span id="quoteTxt">${esc(q)}</span>”</div>${card}${alsoToday()}${vidSec}${exSec}`;
 }
 
 function rPlan() {
@@ -1470,15 +1699,17 @@ function rPlan() {
         const id = "w"+(w+1)+"t"+i, on = !!state[id];
         return `<div class="taskline ${on?'done':''}">
           <div class="tick ${on?'on':''}" onclick="toggle('${id}')">${on?'✓':''}</div>
-          <div class="txt">D${i+1}: ${esc(t)} <span class="muted">${W[w].ph[i]==='p'?'📱':'💻'}</span></div></div>`;
+          <div class="txt">D${i+1}: ${esc(t)} <span class="tag">${W[w].ph[i]==='p'?'Phone':'PC'}</span></div></div>`;
       }).join("")}
-      ${W[w].code ? `<a class="btn colab" href="${COLAB}" target="_blank">▶ Colab</a><button class="btn ghost" onclick="copyCode(${w}, this)">📋 Starter code</button>` : ""}</div>`;
+      ${W[w].code ? `<a class="btn colab" href="${COLAB}" target="_blank">Open Colab</a><button class="btn ghost" onclick="copyCode(${w}, this)">Copy starter code</button>` : ""}</div>`;
     }
   });
   return h;
 }
 
-function rLearn() {
+function rLearn() { return rBar() + (curTopic ? rTopic() : learnTrack === "py" ? rLearnPy() : rTrack(learnTrack)); }
+
+function rLearnPy() {
   const w = curWeek();
   const wk = W[w-1];
   let quizCard;
@@ -1544,7 +1775,12 @@ function answerStatic(btn, i, right) {
 
 function rSet() {
   const perm = (typeof Notification !== "undefined") ? Notification.permission : "unsupported";
-  return `<div class="card"><h2>Google Sheets sync</h2>
+  return `<div class="card"><h2>Plan start date</h2>
+    <p class="muted">"Ahead / behind" on Today is measured from this day.</p>
+    <input type="date" id="startIn" value="${localStorage.getItem('start') || ''}">
+    <button class="btn ghost" onclick="if (document.getElementById('startIn').value) { localStorage.setItem('start', document.getElementById('startIn').value); location.reload(); }">Save start date</button>
+  </div>
+  <div class="card"><h2>Google Sheets sync</h2>
     <p class="muted">Your Apps Script web-app URL (ends in /exec).</p>
     <input type="url" id="urlIn" placeholder="https://script.google.com/macros/s/…/exec" value="${cfg()}">
     <button class="btn primary undone" onclick="localStorage.setItem('sheetUrl', document.getElementById('urlIn').value.trim()); pull().then(render)">Save & test connection</button>
@@ -1596,7 +1832,7 @@ function copyCode(w, btn) {
 
 function go(t) {
   tab = t; render();
-  if (t === "learn" && cfg() && !curQ && !qBusy && !qErr) nextQ();
+  if (t === "learn" && learnTrack === "py" && cfg() && !curQ && !qBusy && !qErr) nextQ();
 }
 
 if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").catch(() => {}); }
@@ -1609,6 +1845,7 @@ async function refresh() {
 }
 
 render();
+loadTracks().then(render);
 pull().then(render);
 setInterval(refresh, 60000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });

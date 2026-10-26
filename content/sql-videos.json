@@ -1,0 +1,59 @@
+{
+  "track": "sql",
+  "note": "1-2 videos per topic. Every id verified against YouTube oEmbed on 2026-10-26; durations read from the watch page. Format: [title, youtubeId, duration, channel]. focus = a short vetted summary the AI quiz is written from.",
+  "topics": {
+    "select-filter": {
+      "title": "SELECT, WHERE, ORDER BY",
+      "focus": "SELECT picks columns, FROM names the table, WHERE filters rows before any grouping, ORDER BY sorts (ascending by default, DESC for descending) and LIMIT (or TOP or FETCH FIRST, depending on the database) caps the number of rows. SELECT DISTINCT removes duplicate rows. NULL is not equal to anything, so test it with IS NULL, not = NULL. Logical order of evaluation: FROM, WHERE, GROUP BY, HAVING, SELECT, ORDER BY, LIMIT.",
+      "videos": [
+        ["Getting Started with SQL: SELECT, FROM, WHERE, GROUP BY, HAVING, ORDER BY", "eRWOdpludPM", "12:56", "Maven Analytics"]
+      ]
+    },
+    "aggregates-group-by": {
+      "title": "Aggregates, GROUP BY, HAVING",
+      "focus": "Aggregate functions COUNT, SUM, AVG, MIN and MAX collapse many rows into one value. GROUP BY makes one result row per group. WHERE filters rows before grouping; HAVING filters groups after aggregation. COUNT(*) counts rows, while COUNT(column) skips NULLs. Every selected column that is not aggregated must appear in GROUP BY.",
+      "videos": [
+        ["Basic Aggregate Functions in SQL (COUNT, SUM, AVG, MAX, MIN)", "jcoJuc5e3RE", "5:44", "Becoming a Data Scientist"],
+        ["SQL Aggregate Functions: COUNT, SUM, AVG, MAX, MIN", "wIljdjni_dc", "12:33", "Data with Baraa"]
+      ]
+    },
+    "joins": {
+      "title": "Joins",
+      "focus": "A JOIN combines rows from two tables on a matching condition (ON). INNER JOIN keeps only matching rows. LEFT JOIN keeps all rows from the left table and fills NULL where the right side has no match; RIGHT JOIN is the mirror image. FULL OUTER JOIN keeps unmatched rows from both sides. CROSS JOIN pairs every row with every row. Joining on a key that is not unique multiplies rows.",
+      "videos": [
+        ["SQL JOINs: INNER vs LEFT vs RIGHT vs FULL OUTER", "K9Y8P3X45kE", "9:18", "Maven Analytics"],
+        ["SQL JOINs Explained Simply", "FuFRMegSgL8", "3:53", "DbSchema Database Designer"]
+      ]
+    },
+    "subqueries-cte": {
+      "title": "Subqueries and CTEs",
+      "focus": "A subquery is a query nested inside another query, in WHERE, FROM or SELECT. A correlated subquery refers to the outer query and is evaluated per outer row. A CTE (WITH name AS (...)) names a temporary result for one statement and makes complex queries readable; a recursive CTE refers to itself to walk hierarchies. A CTE exists only for the statement that follows it.",
+      "videos": [
+        ["SQL WITH Clause: CTEs vs Subqueries vs Temp Tables", "LJC8277LONg", "13:14", "Maven Analytics"]
+      ]
+    },
+    "window-functions": {
+      "title": "Window functions",
+      "focus": "A window function computes over a set of rows related to the current row without collapsing them, unlike GROUP BY. Syntax: function() OVER (PARTITION BY ... ORDER BY ...). ROW_NUMBER gives unique sequential numbers; RANK leaves gaps after ties; DENSE_RANK does not. LAG and LEAD read the previous or next row. Aggregates such as SUM can also be used as window functions, for example for running totals.",
+      "videos": [
+        ["SQL Window Functions: PARTITION BY, ROW_NUMBER, RANK, DENSE_RANK", "rIcB4zMYMas", "7:52", "Maven Analytics"],
+        ["SQL Window Functions in 10 Minutes", "y1KCM8vbYe4", "10:13", "Colt Steele"]
+      ]
+    },
+    "keys-and-design": {
+      "title": "Keys and table design",
+      "focus": "A primary key uniquely identifies each row and cannot be NULL. A foreign key references another table's primary key and enforces referential integrity. Normalisation splits data to avoid duplication: first normal form means atomic values, second normal form means no dependency on only part of a composite key, third normal form means no dependency of a non-key column on another non-key column. A many-to-many relationship uses a junction table.",
+      "videos": [
+        ["SQL Primary and Foreign Keys (explained simply)", "2SYyb6gNpfg", "11:57", "Teddy Smith"],
+        ["Database Design in 20 Minutes (Schema, Normal Forms, Indexes)", "RL9j46QRPYE", "15:18", "Generalist Programmer"]
+      ]
+    },
+    "indexes": {
+      "title": "Indexes",
+      "focus": "An index is a separate sorted structure, typically a B-tree, that lets the database find rows without scanning the whole table. It speeds up reads (WHERE, JOIN, ORDER BY) but costs extra storage and slows INSERT, UPDATE and DELETE because the index must be maintained. Index columns that are filtered or joined often and have many distinct values. A primary key is usually indexed automatically.",
+      "videos": [
+        ["How to Choose the Right Index (Visually Explained)", "1lHNw365ldc", "3:54", "Data with Baraa"]
+      ]
+    }
+  }
+}
