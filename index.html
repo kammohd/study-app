@@ -134,6 +134,15 @@
   .btnrow .btn { margin-top: 8px; }
   .expass { color: var(--ok); font-weight: 700; font-size: 12px; }
   h2 { font-size: 16px; margin-bottom: 10px; }
+  .goalbar { height: 8px; border-radius: 8px; background: var(--line); overflow: hidden; margin: 8px 0 2px; }
+  .goalbar i { display: block; height: 100%; background: var(--ok); border-radius: 8px; }
+  .goalrow { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .goalrow:last-child { border-bottom: none; }
+  .goalrow > div:first-child { flex: 1; min-width: 0; }
+  .step { display: flex; align-items: center; gap: 8px; }
+  .step b { min-width: 22px; text-align: center; font-size: 16px; }
+  .step button { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--border-strong); background: var(--card); color: var(--text); font-size: 20px; font-weight: 700; cursor: pointer; }
+  .soon { opacity: .6; }
 </style>
 </head>
 <body>
@@ -145,12 +154,12 @@
 <nav>
   <button id="nav-today" class="act" onclick="go('today')"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>Today</button>
   <button id="nav-plan" onclick="go('plan')"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Plan</button>
-  <button id="nav-learn" onclick="go('learn')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 5h6a4 4 0 0 1 4 4v11a3 3 0 0 0-3-3H2z"/><path d="M22 5h-6a4 4 0 0 0-4 4v11a3 3 0 0 1 3-3h7z"/></svg>Learn</button>
-  <button id="nav-set" onclick="go('set')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.5 6.2M3 12A9 9 0 0 1 18.5 5.8"/><path d="M18.5 2v4h-4M5.5 22v-4h4"/></svg>Sync</button>
+  <button id="nav-lib" onclick="go('lib')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 5h6a4 4 0 0 1 4 4v11a3 3 0 0 0-3-3H2z"/><path d="M22 5h-6a4 4 0 0 0-4 4v11a3 3 0 0 1 3-3h7z"/></svg>Library</button>
+  <button id="nav-me" onclick="go('me')"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>Me</button>
 </nav>
 
 <script>
-// Plan start date: set on first use, editable in the Sync tab (so "behind" is measured from when you actually began).
+// Plan start date: set on first use, editable in the Me tab.
 const START = (() => {
   let v = ""; try { v = localStorage.getItem("start") || ""; } catch (e) {}
   if (!/^\d{4}-\d\d-\d\d$/.test(v)) { v = localDate(); try { localStorage.setItem("start", v); } catch (e) {} }
@@ -973,7 +982,7 @@ assert exam_score(["x"], ["y"]) == 0`},
 3. ...`}],
 };
 
-let state = {}, queue = {}, tab = "today";
+let state = {}, queue = {}, tab = "today", stack = [], qWeek = 0;
 let liveQuote = "", quoteBusy = false;
 let curQ = null, qBusy = false, qErr = false, answered = false, qScore = 0;
 try { state = JSON.parse(localStorage.getItem("prog")) || {}; } catch(e) {}
@@ -1069,7 +1078,7 @@ async function loadQuote() {
 
 let preQ = null;
 async function fetchQ() {
-  const r = await fetch(cfg(), { method: "POST", body: JSON.stringify({ quiz: "next", week: curWeek() }) });
+  const r = await fetch(cfg(), { method: "POST", body: JSON.stringify({ quiz: "next", week: qWeek || curWeek() }) });
   const d = await r.json();
   if (!d.question || !d.options) throw new Error("bad");
   return d;
@@ -1093,7 +1102,7 @@ function answerQ(btn, i) {
   answered = true;
   const right = Number(curQ.correct);
   document.querySelectorAll(".quizopt").forEach((b, j) => { if (j === right) b.classList.add("right"); });
-  track("quiz", curQ.question, i === right, curWeek());
+  track("quiz", curQ.question, i === right, qWeek || curWeek());
   if (i !== right) {
     btn.classList.add("wrong");
     // wrong → back into the bank as "retry": it resurfaces until answered right
@@ -1153,6 +1162,41 @@ const TRACKS = [
 const TR = {};
 let learnTrack = localStorage.getItem("lt") || "py", curTopic = 0, tq = {};
 
+// Python & AI is an ordinary track now: each plan week is one topic (key = week number 1-16, so the
+// exercise and video code keyed by week keeps working). Its progress is the six lesson ticks of that week.
+function buildPy() {
+  const topics = W.map((wk, i) => {
+    const ph = PHASES.find(([, a, b]) => i >= a && i < b);
+    return { id: "py." + (i + 1), title: "W" + (i + 1) + " · " + wk.th, section: ph ? ph[0] : "", videos: YT[i + 1] || [],
+      ex: EX[i + 1] || [], focus: "", obj: [], key: i + 1, py: true, wk: i + 1 };
+  });
+  TR.py = { name: "Python & AI", topics: topics };
+}
+buildPy();
+
+// ---- Weekly goals: a target per track, counted from the dates already stored on every tick ----
+const GOAL_DEFAULT = { py: 6, dsa: 3, sf: 3, sql: 2 };
+let goals = {}; try { goals = JSON.parse(localStorage.getItem("goals")) || {}; } catch (e) {}
+const goalOf = id => (id in goals ? goals[id] : (GOAL_DEFAULT[id] || 0));
+const unitOf = id => (id === "py" ? "lessons" : "topics");
+function setGoal(id, delta) {
+  goals[id] = Math.max(0, Math.min(id === "py" ? 12 : 14, goalOf(id) + delta));
+  try { localStorage.setItem("goals", JSON.stringify(goals)); } catch (e) {}
+  render();
+}
+// Monday of this week (offset -1 = last week) as a local date string; weeks reset every Monday, nothing carries a debt.
+function weekStart(offset) {
+  const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + (offset || 0) * 7);
+  return localDate(d);
+}
+function doneIn(id, from, before) {
+  const re = id === "py" ? /^w\d+t\d+$/ : new RegExp("^" + id + "\\..+\\.done$");
+  return Object.keys(state).filter(k => re.test(k) && state[k] >= from && state[k] < before).length;
+}
+const weekDone = id => doneIn(id, weekStart(0), "9999");
+const lastWeekDone = id => doneIn(id, weekStart(-1), weekStart(0));
+const lessonsDone = w => W[w - 1].ts.filter((_, i) => state["w" + w + "t" + i]).length;
+
 async function loadTracks() {
   for (const t of TRACKS) {
     let d = null;
@@ -1176,7 +1220,7 @@ async function loadTracks() {
 
 const topicByKey = k => { for (const id in TR) { const f = TR[id].topics.find(x => x.key === k); if (f) return f; } return null; };
 const trackOf = tp => tp.id.split(".")[0];
-const tDone = tp => !!state[tp.id + ".done"];
+const tDone = tp => tp.py ? lessonsDone(tp.wk) === W[tp.wk - 1].ts.length : !!state[tp.id + ".done"];
 const tSeen = (tp, i) => !!state[tp.id + ".v" + i];
 const nextTopic = id => ((TR[id] || {}).topics || []).find(x => !tDone(x)) || null;
 
@@ -1185,7 +1229,19 @@ function flip(k) {
   else { const d = localDate(); state[k] = d; push(k, d); }
   save();
 }
-function toggleTopicDone(key) { flip(topicByKey(key).id + ".done"); render(); }
+function toggleTopicDone(key) {
+  const tp = topicByKey(key);
+  if (tp.py) {   // a Python week is done when all its lessons are ticked; tapping again clears them
+    const all = tDone(tp);
+    W[tp.wk - 1].ts.forEach((_, i) => { const id = "w" + tp.wk + "t" + i; if (!!state[id] === all) toggleLesson(id); });
+  } else flip(tp.id + ".done");
+  render();
+}
+function toggleLesson(id) {
+  if (state[id]) { delete state[id]; push(id, null); }
+  else { const d = localDate(); state[id] = d; push(id, d); }
+  save();
+}
 function toggleTv(key, i, btn) {
   const k = topicByKey(key).id + ".v" + i;
   flip(k);
@@ -1209,12 +1265,32 @@ function tvCard(tp, i) {
     </div></div>`;
 }
 
-function openTopic(key) { curTopic = key; learnTrack = trackOf(topicByKey(key)); tq = {}; tab = "learn"; render(); window.scrollTo(0, 0); }
-function closeTopic() { curTopic = 0; render(); }
+// One topic screen, reachable from Today, Plan, Library or Me. Each open pushes where you were onto a
+// back-stack (and a history entry, so the phone's back button works); Back returns you there.
+function openTopic(key) {
+  const tp = topicByKey(key); if (!tp) return;
+  stack.push({ tab: tab, track: learnTrack, topic: curTopic, y: window.scrollY });
+  history.pushState({ topic: key }, "");
+  curTopic = key; learnTrack = trackOf(tp); tq = {};
+  if (tp.py) {
+    if (qWeek !== tp.wk) { preQ = null; curQ = null; qErr = false; qBusy = false; }
+    qWeek = tp.wk;
+    if (cfg() && !curQ && !qBusy && !qErr) nextQ();
+  }
+  render(); window.scrollTo(0, 0);
+}
+function popTopic() {
+  const s = stack.pop();
+  if (!s) { curTopic = 0; render(); return; }
+  curTopic = s.topic; tab = s.tab; learnTrack = s.track; tq = {};
+  render(); window.scrollTo(0, s.y);
+}
+function closeTopic() { if (stack.length) history.back(); else popTopic(); }
+window.addEventListener("popstate", () => { if (stack.length) popTopic(); });
+const TAB_NAME = { today: "Today", plan: "Plan", lib: "Library", me: "Me" };
 function setTrack(id) {
-  learnTrack = id; curTopic = 0;
+  learnTrack = id;
   try { localStorage.setItem("lt", id); } catch (e) {}
-  if (id === "py" && cfg() && !curQ && !qBusy && !qErr) nextQ();
   render();
 }
 
@@ -1246,7 +1322,7 @@ function answerT(btn, i) {
   if (why) why.textContent = [tq.q.explanation, tq.q.evidence ? "Source: “" + tq.q.evidence + "”" : ""].filter(Boolean).join(" ");
 }
 function tqCard(tp) {
-  if (!cfg()) return `<div class="card"><h2>AI quiz</h2><p class="muted">Connect sync in the Sync tab to get AI questions for this topic.</p></div>`;
+  if (!cfg()) return `<div class="card"><h2>AI quiz</h2><p class="muted">Connect sync in the Me tab to get AI questions for this topic.</p></div>`;
   if (tq.key !== tp.key) return `<div class="card"><h2>AI quiz</h2><p class="muted">Questions are written from this topic's ${tp.obj.length ? "official exam outline" : "vetted summary"} only.</p>
     <button class="btn primary undone" onclick="topicQuiz(${tp.key})">Quiz me on this topic</button></div>`;
   if (tq.busy) return `<div class="card"><div class="spin">Writing a question from the source…</div></div>`;
@@ -1261,7 +1337,7 @@ function tqCard(tp) {
 }
 
 function rBar() {
-  const items = [["py", "Python & AI"]].concat(TRACKS.filter(t => TR[t.id]).map(t => [t.id, t.name]));
+  const items = Object.keys(TR).map(id => [id, TR[id].name]);
   return `<div class="trk">${items.map(([id, n]) => `<button class="${id === learnTrack ? 'on' : ''}" onclick="setTrack('${id}')">${esc(n)}</button>`).join("")}</div>`;
 }
 function rTrack(id) {
@@ -1271,15 +1347,49 @@ function rTrack(id) {
   L.forEach(tp => {
     if (tp.section !== sec) { sec = tp.section; if (sec) h += `<div class="phasehd">${esc(sec)}</div>`; }
     h += `<div class="weekhd ${tDone(tp) ? 'dn' : ''}" onclick="openTopic(${tp.key})"><span>${tDone(tp) ? '✓ ' : ''}${esc(tp.title)}</span>
-      <span class="muted">${tp.videos.length} video${tp.videos.length === 1 ? '' : 's'}${tp.ex.length ? ' · code' : ''}</span></div>`;
+      <span class="muted">${tp.py ? lessonsDone(tp.wk) + "/" + W[tp.wk - 1].ts.length + " lessons" : tp.videos.length + " video" + (tp.videos.length === 1 ? "" : "s") + (tp.ex.length ? " · code" : "")}</span></div>`;
   });
   return h;
+}
+const backBtn = () => `<button class="btn ghost" style="margin:0 0 12px" onclick="closeTopic()">← ${esc(stack.length ? TAB_NAME[stack[stack.length - 1].tab] : TR[learnTrack].name)}</button>`;
+
+// Python week = a topic: its lessons, starter code, videos, quiz and practice all live on this one screen.
+function rTopicPy(tp) {
+  const w = tp.wk, wk = W[w - 1], exl = EX[w] || [], n = lessonsDone(w), total = wk.ts.length;
+  const lessons = wk.ts.map((t, i) => { const id = "w" + w + "t" + i, on = !!state[id];
+    return `<div class="taskline ${on ? 'done' : ''}"><div class="tick ${on ? 'on' : ''}" onclick="toggle('${id}')">${on ? '✓' : ''}</div>
+      <div class="txt">D${i + 1}: ${esc(t)} <span class="tag">${wk.ph[i] === 'p' ? 'Phone' : 'PC'}</span></div></div>`; }).join("");
+  let quiz;
+  if (!cfg()) {
+    const q = wk.quiz[0];
+    quiz = `<div class="card"><div class="muted" style="margin-bottom:8px">Quiz (offline set — connect sync in Me for AI questions)</div>
+      <div class="quizq">${esc(q[0])}</div>${q[1].map((o, i) => `<button class="quizopt" onclick="answerStatic(this, ${i}, ${q[2]})">${esc(o)}</button>`).join("")}</div>`;
+  } else if (qBusy) quiz = `<div class="card"><div class="spin">🧠 Writing you a fresh question…</div></div>`;
+  else if (qErr) quiz = `<div class="card"><div class="muted">Couldn't generate a question — connection issue or quota.</div><button class="btn ghost" onclick="nextQ()">Try again</button></div>`;
+  else if (curQ) quiz = `<div class="card"><div class="muted" style="margin-bottom:8px">AI quiz · adapts to your progress · <span id="qScore">score ${qScore}</span></div>
+      <div class="quizq">${esc(curQ.question)}</div>${curQ.options.map((o, i) => `<button class="quizopt" onclick="answerQ(this, ${i})">${esc(o)}</button>`).join("")}
+      <button class="btn ghost" onclick="nextQ()">Next question →</button></div>`;
+  else quiz = `<div class="card"><h2>AI quiz</h2><p class="muted">Fresh questions for what you've studied. Answer one correctly and it never comes back.</p><button class="btn primary undone" onclick="nextQ()">Get a question</button></div>`;
+  const aiN = parseInt(localStorage.getItem("aiSolved")) || 0, ac = accStats(w);
+  return backBtn() + `
+    <div class="card"><h2>${esc(tp.title)}</h2><div class="muted">${esc(tp.section)} · ${n}/${total} lessons done</div>
+      <button class="btn ${tDone(tp) ? 'ghost' : 'primary undone'}" onclick="toggleTopicDone(${tp.key})">${tDone(tp) ? '✓ Week done · tap to undo' : 'Mark all lessons done'}</button></div>
+    <div class="card"><h2>Lessons</h2>${lessons}</div>
+    ${wk.code ? `<div class="card"><h2>Starter code</h2><a class="btn colab" href="${COLAB}" target="_blank">Open Google Colab</a>
+      <button class="btn ghost" onclick="copyCode(${w - 1}, this)">Copy starter code</button><pre class="code">${esc(wk.code)}</pre></div>` : ""}
+    ${(YT[w] || []).length ? `<div class="card"><h2>Watch</h2>${(YT[w] || []).map((_, i) => vidCard(w, i + 1)).join('<div style="height:14px"></div>')}</div>` : ""}
+    ${quiz}
+    ${exl.length ? `<div class="card"><h2>Practice</h2><p class="muted" style="margin-bottom:6px">${exl.filter((_, i) => exSolved(w, i)).length}/${exl.length} solved · real Python, right in the app${aiN ? ` · ✨ ${aiN} AI extras` : ""}</p>
+      ${exl.map((_, i) => exRow(w, i)).join("")}<button class="btn ghost" onclick="newChallenge(${w}, this)">✨ New AI challenge</button></div>` : ""}
+    ${(ac.tr + ac.tw) ? `<div class="card"><h2>📈 Learning signal</h2><p class="muted">This week's topic: <b>${ac.wr}✓ ${ac.ww}✗</b> · all time ${ac.tr}✓ ${ac.tw}✗ (${Math.round(ac.tr / (ac.tr + ac.tw) * 100)}%)</p></div>` : ""}
+    <div class="card"><h2>Resources</h2>${wk.rs.map(r => `<a class="rsrc" href="${r[2]}" target="_blank"><span>🔗</span><span>${esc(r[0])}<small>${esc(r[1])}</small></span></a>`).join("")}</div>`;
 }
 function rTopic() {
   const tp = topicByKey(curTopic);
   if (!tp) { curTopic = 0; return ""; }
+  if (tp.py) return rTopicPy(tp);
   const exl = EX[tp.key] || [], code = trackOf(tp) === "dsa";
-  return `<button class="btn ghost" style="margin:0 0 12px" onclick="closeTopic()">← ${esc(TR[trackOf(tp)].name)}</button>
+  return backBtn() + `
     <div class="card"><h2>${esc(tp.title)}</h2><div class="muted">${esc(tp.section)}</div>
       ${tp.focus ? `<p style="margin-top:10px;font-size:14px">${esc(tp.focus)}</p>` : ""}
       ${tp.obj.length ? `<details class="obj"><summary>What the exam covers in this section</summary><ul>${tp.obj.map(o => `<li>${esc(o)}</li>`).join("")}</ul></details>` : ""}
@@ -1292,16 +1402,6 @@ function rTopic() {
       ${exl.map((_, i) => exRow(tp.key, i)).join("")}
       <button class="btn ghost" onclick="newChallenge(${tp.key}, this)">✨ New AI challenge</button></div>` : ""}`;
 }
-function alsoToday() {
-  return TRACKS.filter(t => t.today).map(t => {
-    const tp = nextTopic(t.id); if (!tp) return "";
-    const L = TR[t.id].topics;
-    return `<div class="card"><div class="muted">${esc(TR[t.id].name)} · topic ${L.filter(tDone).length + 1} of ${L.length}</div>
-      <h2 style="margin:6px 0 4px">${esc(tp.title)}</h2><div class="muted">${esc(tp.section)}</div>
-      <button class="btn primary undone" onclick="openTopic(${tp.key})">Open topic</button></div>`;
-  }).join("");
-}
-
 function insSym(wk, i, sym) {
   const ta = document.getElementById("pyed_" + wk + "_" + i); if (!ta) return;
   const a = ta.selectionStart, b = ta.selectionEnd;
@@ -1494,7 +1594,7 @@ function markSolved(wk, i) {
 let chBusy = false;
 async function newChallenge(wk, btn) {
   if (chBusy) return;
-  if (!cfg()) { if (btn) btn.textContent = "Connect sync first (⚙ Sync tab)"; return; }
+  if (!cfg()) { if (btn) btn.textContent = "Connect sync first (Me tab)"; return; }
   chBusy = true;
   const orig = btn ? btn.textContent : "";
   try {
@@ -1538,7 +1638,7 @@ async function gradeEx(wk, i) {
   const out = document.getElementById("pyout_" + wk + "_" + i);
   if (!ta || !out) return;
   out.style.display = "block";
-  if (!cfg()) { out.textContent = "Connect sync first (⚙ Sync tab) — AI grading runs through your backend."; return; }
+  if (!cfg()) { out.textContent = "Connect sync first (Me tab) — AI grading runs through your backend."; return; }
   exBusy = true;
   out.textContent = "🧠 Asking the AI to review your answer…";
   try {
@@ -1562,7 +1662,7 @@ async function hintEx(wk, i) {
   const out = document.getElementById("pyout_" + wk + "_" + i);
   if (!ta || !out) return;
   out.style.display = "block";
-  if (!cfg()) { out.textContent = "Connect sync first (⚙ Sync tab) — hints run through your backend."; return; }
+  if (!cfg()) { out.textContent = "Connect sync first (Me tab) — hints run through your backend."; return; }
   exBusy = true;
   out.textContent = "💡 Thinking of a nudge (not the answer)…";
   try {
@@ -1613,157 +1713,80 @@ function closeEx() { render(); }
 
 function render() {
   const v = document.getElementById("view");
-  ["today","plan","learn","set"].forEach(t => document.getElementById("nav-"+t).className = t===tab ? "act" : "");
-  document.getElementById("topTitle").textContent = {today:"Today", plan:"16-week plan", learn:"Learn", set:"Sync & settings"}[tab];
+  ["today", "plan", "lib", "me"].forEach(t => document.getElementById("nav-" + t).className = t === tab ? "act" : "");
+  if (curTopic) {
+    const tp = topicByKey(curTopic);
+    document.getElementById("topTitle").textContent = tp ? TR[trackOf(tp)].name : "";
+    v.innerHTML = rTopic(); return;
+  }
+  document.getElementById("topTitle").textContent = { today: "Today", plan: "This week", lib: "Library", me: "Me" }[tab];
   if (tab === "today") { v.innerHTML = rToday(); loadQuote(); }
   if (tab === "plan") v.innerHTML = rPlan();
-  if (tab === "learn") v.innerHTML = rLearn();
-  if (tab === "set") v.innerHTML = rSet();
+  if (tab === "lib") v.innerHTML = rLib();
+  if (tab === "me") v.innerHTML = rMe();
+}
+
+const goalBar = (n, g) => `<div class="goalbar"><i style="width:${g ? Math.min(100, n / g * 100) : 0}%"></i></div>`;
+
+// Today = what's due this week across every track with a goal, then a way out to anything else.
+function dueCard(id) {
+  const g = goalOf(id), n = weekDone(id), met = g > 0 && n >= g, name = esc(TR[id].name);
+  if (id === "py") {
+    const pos = position();
+    if (!pos) return `<div class="card"><div class="muted">${name}</div><h2>All 96 lessons ticked 🎉</h2></div>`;
+    const wk = W[pos.week - 1];
+    const route = wk.ts.map((_, i) => `<li class="${state["w" + pos.week + "t" + i] ? "on" : (i === pos.dow - 1 ? "now" : "")}"><span>${i + 1}</span></li>`).join("");
+    return `<section class="focus"><div class="kicker">${name} · ${n}/${g} lessons this week${met ? " ✓" : ""} · week ${pos.week} · ${esc(wk.th)}</div>
+      <h2>${esc(pos.task)}</h2><ol class="route" aria-label="This week's lessons">${route}</ol>
+      <div class="tags"><span class="tag">${pos.phone ? "Phone-friendly" : "Best on PC"}</span></div><div class="perf"></div>
+      <button class="btn primary undone" onclick="toggle('${pos.id}')">Mark lesson done</button>
+      <button class="btn ghost" onclick="openTopic(${pos.week})">Open week ${pos.week}: videos, code, quiz</button></section>`;
+  }
+  const tp = nextTopic(id);
+  if (!tp) return `<div class="card"><div class="muted">${name}</div><h2>Every topic done 🎉</h2></div>`;
+  return `<div class="card"><div class="muted">${name} · ${n}/${g} topics this week${met ? " ✓ goal met" : ""}</div>${goalBar(n, g)}
+    <h2 style="margin:10px 0 4px">${esc(tp.title)}</h2><div class="muted">${esc(tp.section)}</div>
+    <button class="btn ${met ? 'ghost' : 'primary undone'}" onclick="openTopic(${tp.key})">${met ? "Keep going" : "Open topic"}</button></div>`;
 }
 
 function rToday() {
-  const t = todayInfo(), s = stats();
-  const q = liveQuote || QUOTES[Math.floor(Date.now()/864e5) % QUOTES.length];
-  let card;
-  let dispW = 0, dispD = 0;
-  const pos = position();
-  if (!pos) {
-    card = `<div class="card"><h2>Everything's ticked</h2><p class="muted">All 96 sessions done. Take a quiz in Learn, generate an AI challenge — or rest, you've earned it.</p></div>`;
-  } else {
-    dispW = pos.week; dispD = pos.dow;
-    const wk = W[pos.week-1];
-    const delta = s.done - expectedSessions();
-    const pace = t.pre ? `<span class="tag">Head start</span>`
-      : delta > 0 ? `<span class="tag">${delta} ahead</span>`
-      : delta === 0 ? `<span class="tag">On track</span>`
-      : `<span class="tag">${-delta} behind · one session catches up</span>`;
-    const topNote = t.pre ? `<p class="muted" style="margin-bottom:8px">Plan starts ${START.toDateString()} — or start right now:</p>`
-      : t.rest ? `<p class="muted" style="margin-bottom:8px">Sunday is a rest day. Everything below is optional.</p>` : "";
-    const route = wk.ts.map((_, i) => `<li class="${state["w"+pos.week+"t"+i] ? "on" : (i === pos.dow-1 ? "now" : "")}"><span>${i+1}</span></li>`).join("");
-    card = `<section class="focus">
-      ${topNote}
-      <div class="kicker">Week ${pos.week} of 16 · ${esc(wk.th)}</div>
-      <h2>${esc(pos.task)}</h2>
-      <ol class="route" aria-label="This week's lessons">${route}</ol>
-      <div class="tags"><span class="tag">${pos.phone ? "Phone-friendly" : "Best on PC"}</span>${pace}</div>
-      <div class="perf"></div>
-      ${wk.code ? `<a class="btn colab" href="${COLAB}" target="_blank">Open Google Colab</a>
-      <button class="btn ghost" onclick="copyCode(${pos.week-1}, this)">Copy this week's starter code</button>
-      <pre class="code">${esc(wk.code)}</pre>` : ""}
-      ${!pos.phone ? `<p class="muted" style="margin-top:10px">Phone-only tonight? Run the starter code in Colab, or take a quiz in Learn. The PC part can wait for the weekend.</p>` : ""}
-      <button class="btn primary undone" onclick="toggle('${pos.id}')">Mark lesson done</button>
-    </section>`;
-  }
-  let vidSec = "";
-  if (dispW) {
-    const vw = dispW;
-    const pd = dispD;
-    const pick = pickVid(vw, pd);
-    if (pick > 0) {
-      const label = t.rest ? "🎬 Optional Sunday watch" : (pick === pd ? "🎬 This lesson's watch" : "🎬 Catch-up watch");
-      vidSec = `<div class="card"><div class="muted" style="margin-bottom:4px">${label} · ${(YT[vw][pick-1]||[])[2] || ""}</div>${vidCard(vw, pick)}</div>`;
-    } else if (pick === -1) {
-      vidSec = `<div class="card"><div class="muted">🎬 All of week ${vw}'s videos watched 🔥 Rewatch any in Learn, or grab a quiz.</div></div>`;
-    }
-  }
-  let exSec = "";
-  if (dispW) {
-    const ew = dispW;
-    const list = EX[ew] || [];
-    if (list.length) {
-      const solvedN = list.filter((_, i) => exSolved(ew, i)).length;
-      const next = list.findIndex((_, i) => !exSolved(ew, i));
-      exSec = `<div class="card"><div class="muted" style="margin-bottom:4px">⌨️ Hands-on · ${solvedN}/${list.length} solved this week · runs on your phone</div>
-      ${next >= 0 ? exRow(ew, next) : `<button class="btn ghost" onclick="newChallenge(${ew}, this)">✨ All solved 💪 — generate a fresh AI challenge</button>`}</div>`;
-    }
-  }
+  const s = stats(), ids = Object.keys(TR).filter(id => goalOf(id) > 0);
+  const q = liveQuote || QUOTES[Math.floor(Date.now() / 864e5) % QUOTES.length];
+  const wd = ids.reduce((a, id) => a + Math.min(weekDone(id), goalOf(id)), 0), wg = ids.reduce((a, id) => a + goalOf(id), 0);
+  const all = Object.keys(TR).reduce((a, id) => a + TR[id].topics.filter(tDone).length, 0);
   return `<div class="statrow">
-    <div class="stat"><b>${s.streak}</b><span>streak</span></div>
-    <div class="stat"><b>${s.done}/${s.total}</b><span>sessions</span></div>
-    <div class="stat"><b>${s.pct}%</b><span>complete</span></div>
+    <div class="stat"><b>${s.streak}</b><span>day streak</span></div>
+    <div class="stat"><b>${wd}/${wg}</b><span>this week's goals</span></div>
+    <div class="stat"><b>${all}</b><span>topics done</span></div>
   </div>
-  <div class="banner" id="quoteBanner">“<span id="quoteTxt">${esc(q)}</span>”</div>${card}${alsoToday()}${vidSec}${exSec}`;
+  <div class="banner" id="quoteBanner">“<span id="quoteTxt">${esc(q)}</span>”</div>
+  ${ids.length ? ids.map(dueCard).join("") : `<div class="card"><h2>No weekly goals yet</h2><p class="muted">Set a target per track in the Plan tab, or pick anything in the Library.</p></div>`}
+  <button class="btn ghost" onclick="go('lib')">Study something else →</button>`;
 }
 
+// Plan = this week across tracks: goals you can change, what's next in each track, and last week's result.
 function rPlan() {
-  const cw = curWeek();
-  let h = "";
-  PHASES.forEach(([name, a, b]) => {
-    h += `<div class="phasehd">${name}</div>`;
-    for (let w = a; w < b; w++) {
-      const dcount = W[w].ts.filter((_, i) => state["w"+(w+1)+"t"+i]).length;
-      const open = (w+1) === cw ? "open" : "";
-      h += `<div class="weekhd ${open} ${(w+1)===cw?'cur':''}" onclick="this.classList.toggle('open')">
-        <span>W${w+1} · ${esc(W[w].th)}</span><span class="muted">${(w+1)===cw?'now · ':''}${dcount}/6</span></div>
-      <div class="weekbody">${W[w].ts.map((t, i) => {
-        const id = "w"+(w+1)+"t"+i, on = !!state[id];
-        return `<div class="taskline ${on?'done':''}">
-          <div class="tick ${on?'on':''}" onclick="toggle('${id}')">${on?'✓':''}</div>
-          <div class="txt">D${i+1}: ${esc(t)} <span class="tag">${W[w].ph[i]==='p'?'Phone':'PC'}</span></div></div>`;
-      }).join("")}
-      ${W[w].code ? `<a class="btn colab" href="${COLAB}" target="_blank">Open Colab</a><button class="btn ghost" onclick="copyCode(${w}, this)">Copy starter code</button>` : ""}</div>`;
-    }
-  });
-  return h;
+  const ids = Object.keys(TR);
+  const goalsCard = `<div class="card"><h2>Weekly goals</h2><p class="muted">Week of ${weekStart(0)} · resets every Monday, so a missed week never piles up.</p>
+    ${ids.map(id => { const g = goalOf(id), n = weekDone(id);
+      return `<div class="goalrow"><div><b>${esc(TR[id].name)}</b><div class="muted">${n} of ${g} ${unitOf(id)} this week · last week ${lastWeekDone(id)}</div>${goalBar(n, g)}</div>
+        <div class="step"><button aria-label="fewer" onclick="setGoal('${id}',-1)">−</button><b>${g}</b><button aria-label="more" onclick="setGoal('${id}',1)">+</button></div></div>`; }).join("")}</div>`;
+  const next = ids.filter(id => goalOf(id) > 0).map(id => {
+    const left = Math.max(1, goalOf(id) - weekDone(id)), L = TR[id].topics.filter(tp => !tDone(tp));
+    const rows = id === "py"
+      ? (() => { const out = []; for (let w = 1; w <= 16 && out.length < left; w++) W[w - 1].ts.forEach((t, i) => { const k = "w" + w + "t" + i; if (!state[k] && out.length < left) out.push(`<div class="taskline"><div class="tick" onclick="toggle('${k}')"></div><div class="txt" onclick="openTopic(${w})">W${w} D${i + 1}: ${esc(t)}</div></div>`); }); return out.join(""); })()
+      : L.slice(0, left).map(tp => `<div class="weekhd" onclick="openTopic(${tp.key})"><span>${esc(tp.title)}</span><span class="muted">${esc(tp.section.split(" · ")[0])}</span></div>`).join("");
+    return rows ? `<div class="phasehd">${esc(TR[id].name)} · up next</div>${rows}` : "";
+  }).join("");
+  const sunday = new Date().getDay() === 0;
+  const review = `<div class="card"><h2>${sunday ? "Sunday review" : "Last week"}</h2>${ids.filter(id => goalOf(id) > 0).map(id => `<div class="muted" style="margin:4px 0">${esc(TR[id].name)}: <b>${lastWeekDone(id)}</b> of ${goalOf(id)} ${unitOf(id)}</div>`).join("")}
+    <p class="muted" style="margin-top:8px">${sunday ? "Adjust the goals above for next week: raise what felt easy, lower what didn't." : "Goals carry nothing over. Start this week fresh."}</p></div>`;
+  return goalsCard + next + review;
 }
 
-function rLearn() { return rBar() + (curTopic ? rTopic() : learnTrack === "py" ? rLearnPy() : rTrack(learnTrack)); }
-
-function rLearnPy() {
-  const w = curWeek();
-  const wk = W[w-1];
-  let quizCard;
-  if (!cfg()) {
-    const q = wk.quiz[0];
-    quizCard = `<div class="card">
-      <div class="muted" style="margin-bottom:8px">Quiz (offline set — connect sync for AI questions)</div>
-      <div class="quizq">${esc(q[0])}</div>
-      ${q[1].map((o, i) => `<button class="quizopt" onclick="answerStatic(this, ${i}, ${q[2]})">${esc(o)}</button>`).join("")}
-    </div>`;
-  } else if (qBusy) {
-    quizCard = `<div class="card"><div class="spin">🧠 Writing you a fresh question…</div></div>`;
-  } else if (qErr) {
-    quizCard = `<div class="card"><div class="muted">Couldn't generate a question — connection issue or quota. </div><button class="btn ghost" onclick="nextQ()">Try again</button></div>`;
-  } else if (curQ) {
-    quizCard = `<div class="card">
-      <div class="muted" style="margin-bottom:8px">AI quiz · adapts to your progress · <span id="qScore">score ${qScore}</span></div>
-      <div class="quizq">${esc(curQ.question)}</div>
-      ${curQ.options.map((o, i) => `<button class="quizopt" onclick="answerQ(this, ${i})">${esc(o)}</button>`).join("")}
-      <button class="btn ghost" onclick="nextQ()">Next question →</button>
-    </div>`;
-  } else {
-    quizCard = `<div class="card"><h2>AI quiz</h2><p class="muted">Fresh questions written for exactly what you've studied. Answer one correctly and it never comes back.</p><button class="btn primary undone" onclick="nextQ()">Get a question</button></div>`;
-  }
-  // Full video library: every week, scrollable. Unwatched first (your current
-  // week on top, then curriculum order); watched sink to the bottom, greyed.
-  const allVids = [];
-  for (let vw = 1; vw <= 16; vw++) (YT[vw] || []).forEach((_, i) => allVids.push({ w: vw, d: i + 1 }));
-  const vkey = x => (x.w === w ? 0 : x.w) * 10 + x.d;
-  const unwatched = allVids.filter(x => !vidWatched(x.w, x.d)).sort((a, b) => vkey(a) - vkey(b));
-  const watched = allVids.filter(x => vidWatched(x.w, x.d)).sort((a, b) => (a.w * 10 + a.d) - (b.w * 10 + b.d));
-  const vidsCard = `<div class="card"><h2>Video library</h2>
-    <p class="muted" style="margin-bottom:6px">${watched.length}/${allVids.length} watched · all 16 weeks · watched ones sink to the bottom</p>
-    <div class="vlib">${unwatched.concat(watched).map(x => vidRow(x.w, x.d)).join("")}</div>
-  </div>`;
-  const exl = EX[w] || [];
-  const aiN = parseInt(localStorage.getItem("aiSolved")) || 0;
-  const exCard = exl.length ? `<div class="card"><h2>Hands-on practice</h2>
-    <p class="muted" style="margin-bottom:6px">${exl.filter((_, i) => exSolved(w, i)).length}/${exl.length} solved · real Python, right in the app${aiN ? ` · ✨ ${aiN} AI extras` : ""}</p>
-    ${exl.map((_, i) => exRow(w, i)).join("")}
-    <button class="btn ghost" onclick="newChallenge(${w}, this)">✨ New AI challenge</button>
-  </div>` : "";
-  const ac = accStats(w);
-  const accCard = (ac.tr + ac.tw) ? `<div class="card"><h2>📈 Learning signal</h2>
-    <p class="muted">This week: <b>${ac.wr}✓ ${ac.ww}✗</b>${(ac.wr+ac.ww) ? " — " + Math.round(ac.wr/(ac.wr+ac.ww)*100) + "% right" : ""}<br>
-    All time: ${ac.tr}✓ ${ac.tw}✗ — ${Math.round(ac.tr/(ac.tr+ac.tw)*100)}% across quizzes, exercises & challenges. Every attempt also lands in the Sheet's <b>attempts</b> tab for the long view.</p>
-  </div>` : "";
-  return quizCard + accCard + exCard + vidsCard + `<div class="card"><h2>This week's resources</h2>
-    ${wk.rs.map(r => `<a class="rsrc" href="${r[2]}" target="_blank"><span>🔗</span><span>${esc(r[0])}<small>${esc(r[1])}</small></span></a>`).join("")}
-  </div>
-  <div class="card"><h2>On-the-go drills</h2>
-    <a class="rsrc" href="https://colab.new" target="_blank"><span>▶</span><span>Colab — blank notebook<small>hands-on anywhere</small></span></a>
-    <a class="rsrc" href="https://getmimo.com" target="_blank"><span>📲</span><span>Mimo — 5-min Python drills<small>iOS & Android</small></span></a>
-  </div>`;
+// Library = every track and topic; Create with AI arrives with the Supabase phase.
+function rLib() {
+  return rBar() + rTrack(learnTrack) + `<div class="card soon"><h2>✨ Create a topic with AI</h2><p class="muted">Pick any subject and get notes with sources, flashcards and a quiz, built on the spot. Coming next.</p></div>`;
 }
 
 function answerStatic(btn, i, right) {
@@ -1773,10 +1796,17 @@ function answerStatic(btn, i, right) {
   document.querySelectorAll(".quizopt").forEach(b => b.onclick = null);
 }
 
+function rMe() {
+  const s = stats();
+  const prog = `<div class="card"><h2>Your progress</h2><p class="muted" style="margin-bottom:6px">${s.streak}-day streak</p>
+    ${Object.keys(TR).map(id => { const L = TR[id].topics, n = L.filter(tDone).length;
+      return `<div class="goalrow"><div><b>${esc(TR[id].name)}</b><div class="muted">${n} of ${L.length} topics done</div>${goalBar(n, L.length)}</div></div>`; }).join("")}</div>`;
+  return prog + rSet();
+}
 function rSet() {
   const perm = (typeof Notification !== "undefined") ? Notification.permission : "unsupported";
-  return `<div class="card"><h2>Plan start date</h2>
-    <p class="muted">"Ahead / behind" on Today is measured from this day.</p>
+  return `<div class="card"><h2>Python plan start date</h2>
+    <p class="muted">Sets which plan week the AI quiz and challenges aim at.</p>
     <input type="date" id="startIn" value="${localStorage.getItem('start') || ''}">
     <button class="btn ghost" onclick="if (document.getElementById('startIn').value) { localStorage.setItem('start', document.getElementById('startIn').value); location.reload(); }">Save start date</button>
   </div>
@@ -1831,8 +1861,7 @@ function copyCode(w, btn) {
 }
 
 function go(t) {
-  tab = t; render();
-  if (t === "learn" && learnTrack === "py" && cfg() && !curQ && !qBusy && !qErr) nextQ();
+  tab = t; curTopic = 0; stack = []; render(); window.scrollTo(0, 0);
 }
 
 if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").catch(() => {}); }
@@ -1841,7 +1870,7 @@ async function refresh() {
   if (Object.keys(queue).length) { flushQueue(); return; }
   const before = JSON.stringify(state);
   await pull();
-  if (JSON.stringify(state) !== before && tab !== "learn" && !document.querySelector(".vframe") && !document.querySelector(".pybox")) render();
+  if (JSON.stringify(state) !== before && tab !== "lib" && !curTopic && !document.querySelector(".vframe") && !document.querySelector(".pybox")) render();
 }
 
 render();
