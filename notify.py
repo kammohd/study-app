@@ -37,7 +37,7 @@ def main():
                 subscription_info=sub,
                 data=payload,
                 vapid_private_key="pk.pem",
-                vapid_claims={"sub": os.environ.get("VAPID_SUB", "mailto:noreply@users.noreply.github.com")},
+                vapid_claims={"sub": os.environ.get("VAPID_SUB") or "mailto:noreply@users.noreply.github.com"},
             )
             sent += 1
         except WebPushException as err:
