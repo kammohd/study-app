@@ -4,6 +4,8 @@ A phone-first study app for one learner moving into technical consulting and AI 
 
 **Live:** https://kammohd.github.io/study-app/ (GitHub Pages, `main` branch)
 
+**How it is built:** https://kammohd.github.io/study-app/docs/ — architecture, systems, every command and the code, explained with four interactive figures (`docs/index.html`, one standalone page).
+
 ## What's in it
 
 | Track | Source | What you get |
