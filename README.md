@@ -34,13 +34,18 @@ Rules for content:
 
 To add a track, add it to `TRACKS` in `index.html` and drop its JSON in `content/`.
 
-## Sync and AI backend
+## Accounts, sync and AI
 
-Progress syncs to a Google Sheet through an Apps Script web app (URL pasted in the app's Sync tab, never committed). The same backend writes AI quiz questions and challenges. The contract the app expects is in [`backend/README.md`](backend/README.md).
+Sign-in is Google only and invite-only (the admin adds emails in the Me tab). Progress, weekly goals and answers
+live in your account, so they follow you across devices; signed out, the app still works from this device only.
+AI quizzes, coding challenges, hints, grading and the daily quote run on a small backend (FastAPI on Cloud Run,
+data in Supabase) described in [`backend/README.md`](backend/README.md). No secret lives in this repo.
 
 ## Notifications
 
-`notify.py` runs from `.github/workflows/nudge.yml` and sends a web-push nudge. Repo secrets: `EXEC_URL`, `VAPID_PRIVATE_KEY`, optional `VAPID_SUB` (a `mailto:` address).
+Turn them on per device in the Me tab. At 8pm in your own timezone you get a nudge about the tracks still short of
+this week's goal, and at 9pm a reminder if you haven't studied yet. Nothing on Sundays or once every goal is met.
+iPhone needs the app added to the home screen first (iOS 16.4+).
 
 ## Run locally
 

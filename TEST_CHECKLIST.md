@@ -80,12 +80,19 @@ select user_id, count(*) from ticks group by 1;                -- A and B separa
 - [ ] `question_state` and `ticks` rows are split by user; no row has a null `user_id`.
 - [ ] No two `question_bank` rows share the same `(track, topic_id, question)`.
 
-## Known gaps (not expected to work for B yet)
+## 9. Quote, notifications and the retired Sheet sync
 
-These still run through the owner's Apps Script and are migrated in steps 3 and 4 of phase 3:
+- [ ] Today tab shows a quote; it changes only every few hours, and contains no name.
+- [ ] Me tab no longer has a "Google Sheets sync" card.
+- [ ] Me → Notifications → *Enable* works for A on a phone and for B on a laptop (allow the browser prompt).
+- [ ] After ~5 seconds each user has a row in `push_subs` and `nudge_prefs` (use the SQL below).
+- [ ] A forced test nudge reaches each user and talks about **their** weekly goals, not the other user's.
+- [ ] *Turn off on this device* stops it for that device only.
+- [ ] After a real 8pm (local) the scheduled nudge arrives; a user who met every goal gets none; nothing on Sunday.
 
-- Daily motivational quote.
-- Push-notification nudges (owner only).
-- Old Google Sheet tick sync and the "Google Sheets sync" card on the Me tab.
+```sql
+select user_id, split_part(endpoint, '/', 3) as push_service, updated_at from push_subs;
+select user_id, tz, enabled, last_nudge, left(next_task, 80) as summary from nudge_prefs;
+```
 
-Phase 3 is **done** only when this checklist passes for both users and the known gaps above are gone.
+Phase 3 is **done** when every box above passes for both users.

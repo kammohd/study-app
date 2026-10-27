@@ -1,50 +1,117 @@
-# AI backend contract
+# Study app backend
 
-The app talks to one Apps Script web app (`/exec`). The script is `Backend_Script` in the repo root (v10): paste all of it into the Apps Script editor, then Deploy → Manage deployments → edit → New version. Run `testGrounding` once from the editor to check it. This file is the contract the front end relies on, and the rules the prompts follow so questions stay true to their source.
+A FastAPI service on Google Cloud Run, with Supabase (Postgres + Google sign-in) as the database. It
+replaced the old Google Sheet and Apps Script backend.
 
-Everything below is implemented in `Backend_Script` v10 and was tested against a mocked Apps Script with a fake model that invents quotes and gives wrong answers (all rejected).
+```
+phone / laptop (GitHub Pages, index.html)
+   │  Google sign-in via Supabase  →  JWT
+   ▼
+FastAPI on Cloud Run ──► Supabase Postgres (row-level security on every table)
+   │         ▲
+   │         └── Cloud Scheduler, hourly: POST /internal/nudge  (shared secret header)
+   └──► Gemini API  (key in Secret Manager)      └──► web-push services (Apple / Google / Mozilla / Windows)
+```
 
-## Requests the app sends (POST, JSON body)
+## Who can do what
 
-| Body | When | Expected response |
-|---|---|---|
-| `{ticks:{id: date\|null}}` | tick a lesson, video or topic | stored |
-| `{quiz:"next", week}` | Python & AI quiz | `{question, options[], correct}` |
-| `{quiz:"next", week, track, topicId, topic, section, source}` | **topic quiz** (DSA, Salesforce) | `{topicId, question, options[], correct, explanation, evidence}` |
-| `{challenge:"next", week, theme, done[], avoid[]}` | Python challenge | `{title, brief, scaffold, test, solution}` |
-| `{challenge:"next", ..., track, topicId, source}` | **topic challenge** (DSA) | same, plus `topicId` echoed back |
-| `{grade:{task, answer}}` / `{hint:{task, code}}` | AI feedback | `{ok, feedback}` / `{hint}` |
-| `{attempt:{date, week, kind, ref, ok}}` | every answer | stored in the `attempts` tab |
+- **Sign-up is invite-only.** A database trigger on `auth.users` refuses any email not in `allowed_emails`.
+- **Progress, goals, attempts, per-user question/challenge state, push devices and nudge settings** are read
+  and written with the user's own token, so Postgres row-level security keeps people apart.
+- **AI routes and push registration** also require the email to be on the invite list, and AI calls count
+  against a daily per-user limit (`DAILY_AI_LIMIT`, default 20).
+- **The shared question and challenge banks** are written only by the backend (secret key) and are read-only
+  to users.
+- **`/internal/nudge`** is not for browsers: it needs the `x-cron-token` header and is closed if no token is set.
 
-For topic requests, `week` is the current plan week and the topic key (101+ for DSA, 201+ for Salesforce) is sent as `week` only inside `attempt` rows.
+## Endpoints
 
-The app rejects any topic response whose `topicId` does not match the request, so an old backend shows "Backend update needed" instead of serving a wrong-topic question.
-
-## Rules the prompts must enforce (anti-hallucination)
-
-1. **Source only.** The prompt includes `source` (official exam objectives, or a vetted summary) and says: write the question from this text and nothing else. If the text does not support a question, return `{error:"insufficient source"}`.
-2. **Evidence.** Every question returns `evidence`: a short quote from `source` that proves the correct answer. A question without a quote is discarded.
-3. **No outside facts.** No version numbers, limits, prices or feature names that are not in `source`.
-4. **One correct answer.** Exactly 4 options, `correct` is the 0-based index, distractors are plausible but clearly wrong given the source.
-5. **Verify before serving.** A second call gets only `question` + `options` + `source` and must pick the answer blind; if it disagrees with `correct`, the question is discarded and regenerated (max 2 tries).
-6. **Temperature low** (0 to 0.3) for generation and 0 for verification.
-7. **Code challenges** are verified in the browser: the app runs the reference `solution` against the `test` in Pyodide and discards the challenge if it fails. Keep that. Tests must be plain `assert` lines with a message, no randomness, no I/O.
-8. **Bank, don't regenerate forever.** Store accepted questions in `quizbank` and serve from it; a nightly refill must stop before the 6-minute Apps Script limit (generate a handful per run, keep a cursor).
-
-## Sheet tabs
-
-| Tab | Purpose |
+| Route | Purpose |
 |---|---|
-| `progress` | lesson ticks (`w3t2`) plus any other id the app ticks (videos `w1v2`, topics `dsa.graphs.done`) |
-| `quizbank` | Python & AI questions: date, week, question, options, correct, status, explanation |
-| `topicbank` | DSA / Salesforce questions: date, topicId, question, options, correct, status, explanation, evidence |
-| `challenges` | AI coding challenges; the `week` column holds the plan week or, for topics, the topicId |
-| `attempts` | every right/wrong attempt |
+| `GET /health` | liveness |
+| `GET /me` | who am I, am I allowed AI, am I admin |
+| `GET/POST /ticks`, `GET/PUT /goals`, `POST /attempts` | progress |
+| `POST /quiz/next`, `POST /quiz/result` | serve a banked question, or generate and verify a batch when the bank is empty; wrong answers come back until right |
+| `POST /challenge/next`, `/challenge/solved`, `/challenge/bad` | coding challenges; the app runs each reference solution in the browser and reports broken ones |
+| `POST /ai/hint`, `POST /ai/grade` | AI feedback |
+| `GET /ai/quota` | calls used and left today |
+| `GET /quote` | one motivational line per person, cached 6 hours |
+| `POST /push/subscribe`, `/push/unsubscribe` | register or remove a device (only real push-service hosts are accepted) |
+| `PUT /me/nudge` | the app's timezone and this week's unmet goals, which the nudge is written from |
+| `POST /internal/nudge` | hourly job: sends the 8pm kickoff and 9pm follow-up at each person's local time |
+| `GET/POST/DELETE /admin/emails` | invite list (admins only) |
 
-## The refillBanks timeout (fixed in v10)
+Errors from generation come back as `200` with an `{"error": ...}` field; quota is `429`; the model being down is `503`.
 
-The nightly trigger was killed at the 6-minute limit. Calls to `gemini-flash-latest` "think" by default and nothing capped the run. v10 sends `thinkingBudget: 0` for batch jobs, checks a 4-minute budget before each step, and logs the time each step finished. If it ever fails again, open Executions in Apps Script and read the log lines.
+## Question quality (anti-hallucination)
 
-## Week tracking
+A question reaches the bank only if it passes every gate in `app/quizgen.py`:
 
-`stats()` now finds your week from the first unticked lesson row, not from a start date. Only `w<week>t<day>` rows count as lessons done.
+1. exactly 4 distinct options and a valid answer index;
+2. topic questions carry an `evidence` quote, and 80% of its word-triples must appear in the supplied source;
+3. a second, blind Gemini call answers it without seeing the claimed answer, and must agree and say it is sure;
+4. options are shuffled so the right answer is not always first.
+
+A batch that loses every question is retried once under the same quota charge. Coding challenges are
+checked a second time in the browser (Pyodide) before they are shown.
+
+## Nudges
+
+Cloud Scheduler calls `/internal/nudge` every hour. For each person with a registered device the server
+works out their local time: 8pm sends the kickoff, 9pm sends a follow-up only if they ticked nothing that
+day, Sundays rest. The text is written by the fast Gemini model from the summary the app keeps in
+`nudge_prefs` (tracks short of their weekly goal, with the next step in each). Nothing is sent when every
+goal is met. A device the push service reports as gone is deleted. `last_nudge` prevents a retried job
+sending twice.
+
+## Configuration
+
+Environment variables (on Cloud Run: plain variables, or Secret Manager secrets for the sensitive ones):
+
+| Variable | Secret? | Meaning |
+|---|---|---|
+| `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | no | public by design |
+| `SUPABASE_SECRET_KEY` | **yes** | bypasses row-level security; backend only |
+| `GEMINI_API_KEY` | **yes** | Secret Manager `gemini-api-key` |
+| `VAPID_PRIVATE_KEY` | **yes** | PEM, Secret Manager `vapid-private-key`; the matching public key is in `index.html` |
+| `CRON_TOKEN` | **yes** | Secret Manager `cron-token`; also in the Scheduler job's header |
+| `VAPID_SUBJECT` | no | `mailto:` contact for push services |
+| `DAILY_AI_LIMIT`, `CORS_ORIGINS` | no | per-user AI cap; allowed web origin |
+
+Never commit `.env` or paste a secret in a chat or an issue.
+
+## Database
+
+Run once in the Supabase SQL editor, in order: `schema.sql`, `schema_phase3.sql` (banks and per-user
+state), `schema_step3.sql` (push devices and nudge settings). All three are safe to re-run.
+
+## Run and test locally
+
+```
+python -m venv .venv
+.venv/Scripts/python -m pip install -r requirements.txt
+.venv/Scripts/python -m pytest -q          # no network: the database, Gemini and push services are fakes
+.venv/Scripts/python -m uvicorn app.main:app --reload
+```
+
+## Deploy
+
+```
+gcloud run deploy study-app-api --source=. --region=us-central1 --project=<project> \
+  --update-secrets=GEMINI_API_KEY=gemini-api-key:latest,VAPID_PRIVATE_KEY=vapid-private-key:latest,CRON_TOKEN=cron-token:latest
+```
+
+The service runs under its own service account with access to those secrets only, at one instance maximum.
+A budget alert feeds the kill switch in `../killswitch`, which disables billing if spend passes the cap.
+
+The scheduler job (one-off setup; `gcloud` prints header values, so keep its output out of chat and logs):
+
+```
+gcloud scheduler jobs create http nudge-hourly --location=us-central1 --schedule="0 * * * *" --time-zone=UTC \
+  --uri=<service-url>/internal/nudge --http-method=POST \
+  --headers="Content-Type=application/json,x-cron-token=<token>" --message-body="{}"
+```
+
+When updating its headers, pass `Content-Type=application/json` again, or `gcloud` resets it and the endpoint
+answers `422`. To rotate the token: add a secret version, update the job header, redeploy the service,
+then disable the old version.
