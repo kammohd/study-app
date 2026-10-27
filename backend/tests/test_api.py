@@ -25,7 +25,7 @@ class FakeJwks:
 
 class FakeDb:
     def __init__(self):
-        self.tables = {"allowed_emails": [{"email": "me@x.com", "is_admin": True}, {"email": "pal@x.com", "is_admin": False}], "ai_usage": [], "ticks": [], "goals": []}
+        self.tables = {"allowed_emails": [{"email": "me@x.com", "is_admin": True}, {"email": "pal@x.com", "is_admin": False}], "ai_usage": [], "ticks": [], "goals": [], "invite_requests": []}
         self.deleted = None
 
     async def admin_get(self, table, params=None):

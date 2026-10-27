@@ -17,7 +17,9 @@ Tick each box; write the failing step number and what you saw if anything fails.
 - [ ] A: *Sign in with Google* works and the Me tab shows the account and "cloud synced".
 - [ ] B (invited): signs in, lands signed in, no error.
 - [ ] C (any other Google account, **not** invited): sign-in is refused with "Access is by invitation only".
-- [ ] Signed out: the app still opens and shows the offline quiz set, with no AI buttons doing anything odd.
+- [ ] Signed out (a guest): the app shows **only** the gate: a sign-in button and the request form. No tabs, no lessons, no quiz, no sync dot. The Privacy and Terms links are still visible.
+- [ ] A Google account that is **not** invited tries to sign in: it is refused and the gate says so, with the request form below.
+- [ ] A signed-in account whose invite was removed sees the gate ("not on the invite list") with its email prefilled, and `GET /ticks` for it answers 403.
 - [ ] B does **not** see the Admin card. A does.
 - [ ] A removes B in Admin; B's next sign-in is refused. Re-invite B before continuing.
 
@@ -103,5 +105,14 @@ select user_id, tz, enabled, last_nudge, left(next_task, 80) as summary from nud
 - [ ] After B ticks a lesson, A taps **Refresh** and B's "done" count and "active today" update.
 - [ ] Calling `GET /admin/activity` with B's login returns 403 (the server enforces it, not just the screen).
 - [ ] The card shows no answers or code, only counts.
+
+## 11. Invite requests
+
+- [ ] On the gate, a malformed email shows a message and sends nothing; a good one shows "Request sent".
+- [ ] Sending the same email again, or an email that is already invited, looks identical to the person (no hint who is invited).
+- [ ] A sixth request from one network in a day is refused with a "try tomorrow" message.
+- [ ] The admin's Me tab shows the request under **Invite requests**, the Me icon carries a badge with the count, and an admin device gets a push.
+- [ ] **Approve** adds the email to the invite list; that person can now sign in with Google. **Reject** does not.
+- [ ] A non-admin gets 403 from `/admin/requests`; nobody can read the table with the public key.
 
 Phase 3 is **done** when every box above passes for both users.

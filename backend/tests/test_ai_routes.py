@@ -21,14 +21,23 @@ class FakeDb:
 
     def __init__(self):
         self.t = {"allowed_emails": [{"email": "me@x.com", "is_admin": True}], "ai_usage": [], "question_bank": [],
-                  "question_state": [], "challenge_bank": [], "challenge_state": []}
+                  "question_state": [], "challenge_bank": [], "challenge_state": [], "invite_requests": []}
         self.next_id = 1
 
     def _match(self, rows, params):
         for k, v in (params or {}).items():
-            if isinstance(v, str) and v.startswith("eq."):
+            if not isinstance(v, str):
+                continue
+            if v.startswith("eq."):
                 want = v[3:]
                 rows = [r for r in rows if str(r.get(k)).lower() == want.lower() or str(r.get(k)) == want]
+            elif v.startswith("gte."):
+                rows = [r for r in rows if str(r.get(k, "")) >= v[4:]]
+            elif v.startswith("lt."):
+                rows = [r for r in rows if r.get(k) is not None and str(r.get(k)) < v[3:]]
+            elif v.startswith("in.("):
+                wanted = [x.strip('"') for x in v[4:-1].split(",")]
+                rows = [r for r in rows if str(r.get(k)) in wanted]
         return rows
 
     async def admin_get(self, table, params=None):

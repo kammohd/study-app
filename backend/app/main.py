@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from . import admin_routes, ai_routes, push_routes
+from . import admin_routes, ai_routes, invites, push_routes
 from .auth import User, admin_user, allowlisted_user, current_user
 from .config import Settings, get_settings
 from .db import Supabase
@@ -42,8 +42,11 @@ async def me(user: User = Depends(current_user), db: Supabase = Depends(Supabase
                                                 "last_seen": datetime.now(timezone.utc).isoformat()}], "user_id")
         except HTTPException:
             pass
-    return {"id": user.id, "email": user.email, "ai_allowed": row is not None,
-            "is_admin": bool(row and row.get("is_admin"))}
+    out = {"id": user.id, "email": user.email, "ai_allowed": row is not None, "is_admin": bool(row and row.get("is_admin"))}
+    if out["is_admin"]:     # the Me tab shows a dot when someone is waiting for a decision
+        waiting = await db.admin_get("invite_requests", {"status": "eq.pending", "select": "id", "limit": "100"})
+        out["pending_requests"] = len(waiting)
+    return out
 
 
 # ---- ticks: which lessons / videos / topics are done, and when ----
@@ -54,13 +57,13 @@ class Tick(BaseModel):
 
 
 @app.get("/ticks")
-async def get_ticks(user: User = Depends(current_user), db: Supabase = Depends(Supabase.dep)):
+async def get_ticks(user: User = Depends(allowlisted_user), db: Supabase = Depends(Supabase.dep)):
     rows = await db.get("ticks", user.token, {"select": "id,done_on"})
     return {r["id"]: r["done_on"] for r in rows}
 
 
 @app.post("/ticks")
-async def save_ticks(ticks: list[Tick], user: User = Depends(current_user), db: Supabase = Depends(Supabase.dep)):
+async def save_ticks(ticks: list[Tick], user: User = Depends(allowlisted_user), db: Supabase = Depends(Supabase.dep)):
     """Accepts a batch, the same shape the app already sends: tick or untick many ids at once."""
     if len(ticks) > 200:
         raise HTTPException(422, "At most 200 ticks per request")
@@ -77,13 +80,13 @@ async def save_ticks(ticks: list[Tick], user: User = Depends(current_user), db: 
 # ---- weekly goals ----
 
 @app.get("/goals")
-async def get_goals(user: User = Depends(current_user), db: Supabase = Depends(Supabase.dep)):
+async def get_goals(user: User = Depends(allowlisted_user), db: Supabase = Depends(Supabase.dep)):
     rows = await db.get("goals", user.token, {"select": "track,per_week"})
     return {r["track"]: r["per_week"] for r in rows}
 
 
 @app.put("/goals")
-async def put_goals(goals: dict[str, int], user: User = Depends(current_user), db: Supabase = Depends(Supabase.dep)):
+async def put_goals(goals: dict[str, int], user: User = Depends(allowlisted_user), db: Supabase = Depends(Supabase.dep)):
     bad = [t for t in goals if t not in TRACKS]
     if bad or any(not 0 <= n <= 50 for n in goals.values()):
         raise HTTPException(422, f"Tracks must be one of {TRACKS} and goals 0-50")
@@ -101,7 +104,7 @@ class Attempt(BaseModel):
 
 
 @app.post("/attempts")
-async def add_attempt(a: Attempt, user: User = Depends(current_user), db: Supabase = Depends(Supabase.dep)):
+async def add_attempt(a: Attempt, user: User = Depends(allowlisted_user), db: Supabase = Depends(Supabase.dep)):
     await db.insert("attempts", user.token, [a.model_dump()])
     return {"ok": True}
 
@@ -111,6 +114,7 @@ async def add_attempt(a: Attempt, user: User = Depends(current_user), db: Supaba
 app.include_router(ai_routes.router)
 app.include_router(push_routes.router)
 app.include_router(admin_routes.router)
+app.include_router(invites.router)
 
 
 @app.get("/ai/quota")

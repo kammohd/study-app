@@ -20,6 +20,8 @@ FastAPI on Cloud Run ──► Supabase Postgres (row-level security on every ta
   and written with the user's own token, so Postgres row-level security keeps people apart.
 - **AI routes and push registration** also require the email to be on the invite list, and AI calls count
   against a daily per-user limit (`DAILY_AI_LIMIT`, default 20).
+- **Progress, goals and attempts** need an active invite, like the AI routes, so removing someone from the list locks them out of the API.
+- **`/invite-requests`** is the one public write. It is defensive by design: a constant reply (it never reveals who is invited), a keyed hash instead of the address, a per-network daily limit, a cap on pending requests, one row per email, and a honeypot.
 - **`/admin/activity`** checks `is_admin` on the server. The `profiles` table (login to email, last seen) is closed to
   browsers; `/me` fills it for invited people only.
 - **The shared question and challenge banks** are written only by the backend (secret key) and are read-only
@@ -42,6 +44,8 @@ FastAPI on Cloud Run ──► Supabase Postgres (row-level security on every ta
 | `PUT /me/nudge` | the app's timezone and this week's unmet goals, which the nudge is written from |
 | `POST /internal/nudge` | hourly job: sends the 8pm kickoff and 9pm follow-up at each person's local time |
 | `GET/POST/DELETE /admin/emails` | invite list (admins only) |
+| `POST /invite-requests` | **public**: anyone may ask for an invite. Always answers the same way, keeps only a hashed network address, caps requests per network per day and in total, ignores a honeypot field, and pushes a notification to admin devices. |
+| `GET /admin/requests`, `POST /admin/requests/{id}/approve`, `/reject` | admins only: list the pending requests; approving adds the email to the invite list. Decided requests are deleted after 90 days by the hourly job. |
 | `GET /admin/activity` | admins only: each invited person's week so far (items done, goals met, streak, quiz accuracy, challenges, AI calls today, last active), ranked. Mirrors the app's goal defaults and Monday-to-Monday week. |
 
 Errors from generation come back as `200` with an `{"error": ...}` field; quota is `429`; the model being down is `503`.
@@ -86,7 +90,7 @@ Never commit `.env` or paste a secret in a chat or an issue.
 ## Database
 
 Run once in the Supabase SQL editor, in order: `schema.sql`, `schema_phase3.sql` (banks and per-user
-state), `schema_step3.sql` (push devices and nudge settings), `schema_leaderboard.sql` (profiles for the admin board).
+state), `schema_step3.sql` (push devices and nudge settings), `schema_leaderboard.sql` (profiles for the admin board), `schema_invites.sql` (invite requests).
 All are safe to re-run.
 
 ## Run and test locally

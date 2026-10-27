@@ -23,7 +23,7 @@
     --ok:#17803D; --ok-bg:#12301F; --ok-ink:#86EFAC; --err:#F87171; --err-bg:#3B1A1A;
     --chip-bg:#1A2638; --chip-ink:#C9D6EA; --colab-bg:#1A2638; --colab-bd:#2A3A52; --nav:#121C2EEE; } }
   html { color-scheme: light dark; }
-  input[type=text], input[type=url], input[type=date] { background: var(--card); color: var(--text); min-height: 44px; }
+  input[type=text], input[type=email], input[type=url], input[type=date], textarea { background: var(--card); color: var(--text); min-height: 44px; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
   .btn, .quizopt, .weekhd { min-height: 44px; }
@@ -100,7 +100,7 @@
   .rsrc { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 14px; text-decoration: none; color: var(--text); }
   .rsrc:last-child { border-bottom: none; }
   .rsrc small { color: var(--muted); display: block; font-size: 11.5px; }
-  input[type=text], input[type=url], input[type=date] { width: 100%; padding: 12px; border: 1px solid var(--border-strong); border-radius: 10px; font-size: 14px; margin-top: 6px; }
+  input[type=text], input[type=email], input[type=url], input[type=date], textarea { width: 100%; font-family: inherit; padding: 12px; border: 1px solid var(--border-strong); border-radius: 10px; font-size: 14px; margin-top: 6px; }
   nav { position: fixed; bottom: max(10px, env(safe-area-inset-bottom)); left: 12px; right: 12px; max-width: 536px; margin: 0 auto; background: var(--nav); backdrop-filter: blur(14px); border: 1px solid var(--border); border-radius: 30px; display: flex; gap: 4px; padding: 6px; box-shadow: 0 10px 30px #0F1B2D26; }
   nav button { flex: 1; background: none; border: none; border-radius: 24px; padding: 8px 0 6px; font-size: 11px; font-weight: 600; color: var(--muted); cursor: pointer; }
   nav button.act { background: var(--accent); color: var(--on-accent); font-weight: 700; }
@@ -145,6 +145,14 @@
   .step button { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--border-strong); background: var(--card); color: var(--text); font-size: 20px; font-weight: 700; cursor: pointer; }
   .foot { max-width: 560px; margin: 18px auto 0; padding: 0 14px; font-size: 12px; color: var(--muted); text-align: center; }
   .foot a { color: var(--muted); text-decoration: underline; }
+  textarea { min-height: 88px; resize: vertical; }
+  body.locked nav, body.locked .syncdot { display: none; }
+  body.locked { padding-bottom: 24px; }
+  .gate h2 { margin-top: 0; }
+  .gate .small { font-size: 12.5px; }
+  .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
+  nav button[data-badge]:not([data-badge=""]) { position: relative; }
+  nav button[data-badge]:not([data-badge=""])::after { content: attr(data-badge); position: absolute; top: 4px; right: calc(50% - 24px); min-width: 16px; height: 16px; border-radius: 8px; padding: 0 4px; background: var(--signal); color: var(--signal-ink); font-size: 10px; font-weight: 800; line-height: 16px; text-align: center; }
 </style>
 </head>
 <body>
@@ -1043,11 +1051,17 @@ async function api(path, opts) {
   const t = data.session && data.session.access_token;
   if (!t) throw new Error("Signed out");
   const r = await fetch(API + path, { ...opts, headers: { authorization: "Bearer " + t, "content-type": "application/json" } });
-  if (!r.ok) { const d = (await r.json().catch(() => ({}))).detail; throw new Error(typeof d === "string" ? d : "Error " + r.status); }
+  if (!r.ok) { const d = (await r.json().catch(() => ({}))).detail; const err = new Error(typeof d === "string" ? d : "Error " + r.status); err.status = r.status; throw err; }
   return r.json();
 }
 // AI features need a signed-in, invited account; the backend checks the same thing on every call.
 const aiOn = () => !!(me && me.ai_allowed);
+// The app opens only for someone who is signed in AND on the invite list. The server enforces this on every call;
+// this is what the screen does about it. Until the first sign-in check finishes we show a short wait, not the gate.
+let authReady = !sb, reqList = null, invite = { sent: false };
+const unlocked = () => !!(me && me.ai_allowed);
+const cacheMe = () => { try { localStorage.setItem("meCache", JSON.stringify(me)); } catch (e) {} };
+const cachedMe = id => { try { const m = JSON.parse(localStorage.getItem("meCache")); return m && m.id === id && m.ai_allowed ? m : null; } catch (e) { return null; } };
 const SIGN_IN_AI = "Sign in on the Me tab with an approved account to use AI.";
 // Public by design: the browser uses it to tell the push service which server may send to this device.
 const VAPID_PUBLIC = "BPL4edC-sH8DfCtCqk3bs2AqcMMuprlzxbKLwzHn0fqSWBmua_Llc6q5-C5H_td4YsywXTPXtnDT-l3kpmGQjVg";
@@ -1106,11 +1120,70 @@ async function signIn() {
   const { error } = await sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } });
   if (error) { cloudMsg = error.message; render(); }
 }
-async function signOut() { await sb.auth.signOut(); me = null; adminList = null; team = null; setDot("", "local only"); render(); }
+async function signOut() {
+  await sb.auth.signOut(); me = null; adminList = null; team = null; reqList = null; invite = { sent: false };
+  try { localStorage.removeItem("meCache"); } catch (e) {}
+  setDot("", "local only"); render();
+}
+
+// ---- the gate: what a guest (or an account that is not invited) sees ----
+function rGate() {
+  if (!sb) return `<div class="card gate"><h2>AI Study</h2><p class="muted">Sign-in needs a connection. Check your network and try again.</p><button class="btn primary undone" onclick="location.reload()">Try again</button></div>`;
+  const who = me && !me.ai_allowed ? me : null;
+  const err = authErr ? "That Google account is not on the invite list yet. Request an invite below." : cloudMsg;
+  const top = `<div class="card gate"><h2>Sign in</h2>
+    <p class="muted">${who ? "You are signed in as <b>" + esc(who.email || "") + "</b>, which is not on the invite list yet." : "A private study app. You need an invite to get in."}</p>
+    ${err ? `<p class="muted" style="color:#C0392B">${esc(err)}</p>` : ""}
+    ${who ? `<button class="btn ghost" onclick="signOut()">Use a different account</button>`
+          : `<button class="btn primary undone" onclick="signIn()">Sign in with Google</button><p class="muted small">Already invited? Sign in with the Google account that uses your invited email.</p>`}</div>`;
+  if (invite.sent) return top + `<div class="card gate"><h2>Request sent</h2><p class="muted">Thanks. An admin will look at it. Once it is approved, come back and sign in with Google using <b>${esc(invite.email || "that email")}</b>.</p><button class="btn ghost" onclick="invite = { sent: false }; render()">Send another request</button></div>`;
+  return top + `<div class="card gate"><h2>Request an invite</h2>
+    <p class="muted">Tell us who you are. An admin reviews every request.</p>
+    <input type="email" id="rqEmail" placeholder="you@gmail.com" autocomplete="email" maxlength="200" value="${escA(who ? who.email || "" : "")}">
+    <input type="text" id="rqName" placeholder="Your name (optional)" maxlength="80" autocomplete="name">
+    <textarea id="rqNote" placeholder="Why would you like to join? (optional)" maxlength="300"></textarea>
+    <div class="hp" aria-hidden="true"><label>Website <input type="text" id="rqWeb" tabindex="-1" autocomplete="off"></label></div>
+    <button class="btn primary undone" id="rqBtn" onclick="submitInvite()">Send request</button>
+    <p class="muted small" id="rqMsg" role="status"></p></div>`;
+}
+async function submitInvite() {
+  const g = id => document.getElementById(id), msg = g("rqMsg"), btn = g("rqBtn");
+  const body = { email: g("rqEmail").value.trim(), name: g("rqName").value.trim(), note: g("rqNote").value.trim(), website: g("rqWeb").value };
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email)) { msg.textContent = "Please enter a valid email address."; return; }
+  btn.disabled = true; msg.textContent = "Sending…";
+  try {
+    const r = await fetch(API + "/invite-requests", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) { const d = (await r.json().catch(() => ({}))).detail; throw new Error(typeof d === "string" ? d : "Error " + r.status); }
+    invite = { sent: true, email: body.email }; render();
+  } catch (e) { msg.textContent = e.message === "Failed to fetch" ? "Could not reach the server. Check your connection and try again." : e.message; btn.disabled = false; }
+}
 
 async function adminLoad(quiet) {
-  try { [adminList, team] = await Promise.all([api("/admin/emails"), api("/admin/activity")]); adminMsg = ""; } catch (e) { adminMsg = e.message; }
+  try { [adminList, team, reqList] = await Promise.all([api("/admin/emails"), api("/admin/activity"), api("/admin/requests")]); adminMsg = ""; if (me) me.pending_requests = reqList.length; } catch (e) { adminMsg = e.message; }
   if (!quiet) render();
+}
+function paintBadge() {
+  const n = me && me.is_admin ? me.pending_requests || 0 : 0, b = document.getElementById("nav-me");
+  if (b) b.dataset.badge = n ? String(n) : "";
+}
+async function pollRequests() {
+  try {
+    const list = await api("/admin/requests"), changed = !reqList || list.length !== reqList.length;
+    reqList = list; if (me) me.pending_requests = list.length; paintBadge();
+    if (changed && tab === "me" && !curTopic && !(document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName))) render();
+  } catch (e) {}
+}
+async function reqDecide(id, what) {
+  try { await api("/admin/requests/" + id + "/" + what, { method: "POST" }); adminMsg = ""; } catch (e) { adminMsg = e.message; }
+  await adminLoad();
+}
+function rRequests() {
+  if (!reqList) return "";
+  const rows = reqList.map(r => `<div class="goalrow"><div><b>${esc(r.email)}</b>${r.name ? " · " + esc(r.name) : ""}
+      <div class="muted">${r.note ? esc(r.note) + " · " : ""}asked ${ago(r.created_at)}</div></div>
+      <div style="display:flex;gap:6px"><button class="btn primary undone" style="width:auto;margin:0;padding:8px 12px" onclick="reqDecide(${r.id}, 'approve')">Approve</button>
+      <button class="btn ghost" style="width:auto;margin:0;padding:8px 12px" onclick="reqDecide(${r.id}, 'reject')">Reject</button></div></div>`).join("");
+  return `<div class="card"><h2>Invite requests${reqList.length ? " (" + reqList.length + ")" : ""}</h2>${rows || '<p class="muted">Nobody is waiting.</p>'}</div>`;
 }
 async function adminAdd() {
   const el = document.getElementById("invIn");
@@ -1152,9 +1225,9 @@ function rAccount() {
   const err = authErr ? "This Google account is not on the invite list. Ask the app owner to add your email." : cloudMsg;
   const msg = err ? `<p class="muted" style="color:#C0392B">${esc(err)}</p>` : "";
   if (!me) return `<div class="card"><h2>Account</h2>
-    <p class="muted">Sign in to sync your progress across devices. The app is invite-only, and it works without signing in too.</p>${msg}
+    <p class="muted">Sign in with an invited Google account to use the app.</p>${msg}
     <button class="btn primary undone" onclick="signIn()">Sign in with Google</button></div>`;
-  const admin = !me.is_admin ? "" : rTeam() + `<div class="card"><h2>Invited emails</h2>
+  const admin = !me.is_admin ? "" : rRequests() + rTeam() + `<div class="card"><h2>Invited emails</h2>
     ${(adminList || []).map(r => `<div class="goalrow"><div><b>${esc(r.email)}</b>${r.is_admin ? ' <span class="muted">admin</span>' : ""}</div>
       ${r.is_admin ? "" : `<button class="btn ghost" style="width:auto;margin:0;padding:8px 14px" data-e="${escA(r.email)}" onclick="adminRemove(this.dataset.e)">Remove</button>`}</div>`).join("")}
     <input type="text" inputmode="email" autocapitalize="off" id="invIn" placeholder="friend@gmail.com">
@@ -1208,7 +1281,7 @@ function expectedSessions() {
 
 function setDot(cls, lbl) { const d = document.getElementById("syncDot"); d.className = "dot " + cls; document.getElementById("syncLbl").textContent = lbl; }
 
-// Progress changes go to the account in the background; signed out, they stay on this device.
+// Progress changes go to the account in the background.
 async function push(id, val) {
   save();
   if (me && (val === null || isDate(val))) { cq[id] = val; saveCq(); flushCloud().catch(() => {}); }
@@ -1854,7 +1927,14 @@ function openEx(wk, i) {
 function closeEx() { render(); }
 
 function render() {
-  const v = document.getElementById("view");
+  const v = document.getElementById("view"), locked = !authReady || !unlocked();
+  document.body.classList.toggle("locked", locked);
+  if (locked) {
+    document.getElementById("topTitle").textContent = "AI Study";
+    v.innerHTML = authReady ? rGate() : `<div class="card"><div class="spin">Checking your sign-in…</div></div>`;
+    return;
+  }
+  paintBadge();
   ["today", "plan", "lib", "me"].forEach(t => document.getElementById("nav-" + t).className = t === tab ? "act" : "");
   if (curTopic) {
     const tp = topicByKey(curTopic);
@@ -2016,23 +2096,34 @@ if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").ca
 
 async function refresh() {
   if (!me || document.hidden) return;
+  if (me.is_admin) pollRequests();
   let changed = false;
   try { changed = await pullTicks(); setDot("ok", "cloud synced"); } catch (e) { setDot("err", "sync failed"); }
   if (changed && tab !== "lib" && !curTopic && !document.querySelector(".vframe") && !document.querySelector(".pybox")) render();
 }
 
-if (authErr) tab = "me";
 render();
-if (sb) sb.auth.onAuthStateChange((ev, session) => {
-  // Not async inside the callback: calling Supabase from in here can deadlock, so hop out first.
-  if (ev === "SIGNED_OUT") { me = null; setTimeout(render, 0); }
-  else if (session && (ev === "INITIAL_SESSION" || ev === "SIGNED_IN")) {
-    setTimeout(async () => {
-      try { me = await api("/me"); } catch (e) { me = null; cloudMsg = "Could not reach the server: " + e.message; }
-      await cloudSync(); render();
-    }, 0);
-  }
-});
+if (sb) {
+  sb.auth.onAuthStateChange((ev, session) => {
+    // Not async inside the callback: calling Supabase from in here can deadlock, so hop out first.
+    if (ev === "SIGNED_OUT") { me = null; authReady = true; setTimeout(render, 0); }
+    else if (ev === "INITIAL_SESSION" && !session) { authReady = true; setTimeout(render, 0); }
+    else if (session && (ev === "INITIAL_SESSION" || ev === "SIGNED_IN")) {
+      setTimeout(async () => {
+        try { me = await api("/me"); cacheMe(); }
+        catch (e) {
+          if (e.status === 401) { await sb.auth.signOut(); me = null; cloudMsg = ""; }          // the server rejected the login: start over
+          else if (!e.status && cachedMe(session.user.id)) { me = cachedMe(session.user.id); cloudMsg = "Offline: showing your last saved state."; }
+          else { me = null; cloudMsg = "Could not reach the server: " + e.message; }
+        }
+        authReady = true;
+        if (unlocked()) await cloudSync();
+        render();
+      }, 0);
+    }
+  });
+  setTimeout(() => { if (!authReady) { authReady = true; render(); } }, 7000);     // never leave anyone on the wait screen
+}
 loadTracks().then(() => { render(); syncPrefs(); });
 setInterval(refresh, 60000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });

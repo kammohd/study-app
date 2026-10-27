@@ -39,7 +39,7 @@ To add a track, add it to `TRACKS` in `index.html` and drop its JSON in `content
 ## Accounts, sync and AI
 
 Sign-in is Google only and invite-only (the admin adds emails in the Me tab). Progress, weekly goals and answers
-live in your account, so they follow you across devices; signed out, the app still works from this device only.
+live in your account, so they follow you across devices. The app is invite-only: a signed-out visitor sees only a sign-in button and a form to request an invite, and an admin approves requests in the Me tab.
 AI quizzes, coding challenges, hints, grading and the daily quote run on a small backend (FastAPI on Cloud Run,
 data in Supabase) described in [`backend/README.md`](backend/README.md). No secret lives in this repo.
 

@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from . import nudge, push
+from . import invites, nudge, push
 from .ai_routes import get_gemini
 from .auth import User, allowlisted_user
 from .config import Settings, get_settings
@@ -153,4 +153,5 @@ async def run_nudges(req: NudgeRun | None = None, x_cron_token: str = Header("")
         if "ok" in results:
             await db.admin_patch("nudge_prefs", {"user_id": f"eq.{uid}"}, {"last_nudge": f"{day}:{stage}"})
         report.append({"user": uid[:8], "sent": results.count("ok"), "devices": len(devs), "removed": len(gone)})
+    await invites.purge_old(db)       # housekeeping: decided invite requests are deleted after 90 days
     return {"people": len(devices), "results": report}
