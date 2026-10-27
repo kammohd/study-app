@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from . import ai_routes
+from . import ai_routes, push_routes
 from .auth import User, admin_user, allowlisted_user, current_user
 from .config import Settings, get_settings
 from .db import Supabase
@@ -103,6 +103,7 @@ async def add_attempt(a: Attempt, user: User = Depends(current_user), db: Supaba
 # ---- AI: quota here, quizzes / challenges / hints in ai_routes ----
 
 app.include_router(ai_routes.router)
+app.include_router(push_routes.router)
 
 
 @app.get("/ai/quota")

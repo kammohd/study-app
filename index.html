@@ -993,7 +993,24 @@ try { state = JSON.parse(localStorage.getItem("prog")) || {}; } catch(e) {}
 try { queue = JSON.parse(localStorage.getItem("queue")) || {}; } catch(e) {}
 const cfg = () => localStorage.getItem("sheetUrl") || "";
 
-function save() { localStorage.setItem("prog", JSON.stringify(state)); localStorage.setItem("queue", JSON.stringify(queue)); }
+function save() { localStorage.setItem("prog", JSON.stringify(state)); localStorage.setItem("queue", JSON.stringify(queue)); syncPrefs(); }
+
+// The server writes the nudge text, but only the app knows the plan. After progress changes, tell it which
+// lesson is next and where "8pm" is for this person (their device timezone). Debounced; silent when signed out.
+function nextTask() {
+  for (let w = 0; w < W.length; w++) for (let i = 0; i < W[w].ts.length; i++)
+    if (!state["w" + (w + 1) + "t" + i]) return ("Week " + (w + 1) + ", day " + (i + 1) + ": " + W[w].ts[i]).slice(0, 300);
+  return "";
+}
+let prefsTimer = 0, nudgeOn = true;
+function syncPrefs() {
+  if (!aiOn()) return;
+  clearTimeout(prefsTimer);
+  prefsTimer = setTimeout(() => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Dubai";
+    api("/me/nudge", { method: "PUT", body: JSON.stringify({ tz: tz, next_task: nextTask(), enabled: nudgeOn }) }).catch(() => {});
+  }, 4000);
+}
 
 // ---- Cloud account: Google sign-in through Supabase, data through our FastAPI backend ----
 // The key below is the public (publishable) one; row-level security and the invite list do the guarding.
@@ -1022,6 +1039,8 @@ async function api(path, opts) {
 // AI features need a signed-in, invited account; the backend checks the same thing on every call.
 const aiOn = () => !!(me && me.ai_allowed);
 const SIGN_IN_AI = "Sign in on the Me tab with an approved account to use AI.";
+// Public by design: the browser uses it to tell the push service which server may send to this device.
+const VAPID_PUBLIC = "BPL4edC-sH8DfCtCqk3bs2AqcMMuprlzxbKLwzHn0fqSWBmua_Llc6q5-C5H_td4YsywXTPXtnDT-l3kpmGQjVg";
 // First load of a topic can fail once (cold server, or a batch that did not pass verification); try again quietly.
 // A 200 reply can still carry {error} (nothing usable was written); count that as a failure worth one retry.
 async function aiPost(path, body) {
@@ -1182,11 +1201,10 @@ async function flushQueue() {
 }
 
 async function loadQuote() {
-  if (!cfg() || quoteBusy) return;
+  if (!aiOn() || quoteBusy) return;
   quoteBusy = true;
   try {
-    const r = await fetch(cfg() + "?action=quote&t=" + Date.now());
-    const d = await r.json();
+    const d = await api("/quote");
     if (d.quote) {
       liveQuote = d.quote;
       const el = document.getElementById("quoteTxt");
@@ -1926,9 +1944,9 @@ function rSet() {
     <button class="btn ghost" onclick="pull().then(render)">↻ Sync now</button>
   </div>
   <div class="card"><h2>Notifications</h2>
-    <p class="muted">Status: <b>${perm}</b>. Needs the app installed to your home screen (iOS 16.4+). Paste the VAPID public key, then enable.</p>
-    <input type="text" id="vapidIn" placeholder="VAPID public key (starts with B…)" value="${localStorage.getItem('vapidKey') || ''}">
-    <button class="btn primary undone" onclick="localStorage.setItem('vapidKey', document.getElementById('vapidIn').value.trim()); enablePush()">🔔 Enable notifications</button>
+    <p class="muted">Status: <b>${perm}</b>. A nudge at 8pm, and a reminder at 9pm if you haven't studied, in your own timezone (not Sundays). Needs the app installed to your home screen (iOS 16.4+) and a signed-in account.</p>
+    <button class="btn primary undone" onclick="enablePush()">🔔 Enable notifications</button>
+    <button class="btn ghost" onclick="disablePush()">🔕 Turn off on this device</button>
     <p class="muted" id="pushStatus"></p>
   </div>
   <div class="card"><h2>Data</h2>
@@ -1947,14 +1965,26 @@ async function enablePush() {
       st.textContent = "Push not supported here. On iPhone: install to home screen first, then enable from inside the installed app.";
       return;
     }
-    const vk = localStorage.getItem("vapidKey") || "";
-    if (!vk) { st.textContent = "Paste the VAPID public key first."; return; }
+    if (!aiOn()) { st.textContent = SIGN_IN_AI; return; }
     const reg = await navigator.serviceWorker.ready;
     const perm = await Notification.requestPermission();
     if (perm !== "granted") { st.textContent = "Permission not granted."; return; }
-    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64(vk) });
-    await fetch(cfg(), { method: "POST", body: JSON.stringify({ subscribe: sub.toJSON() }) });
+    // A device subscribed under an older key must drop it first, or subscribe() refuses the new key.
+    const old = await reg.pushManager.getSubscription();
+    if (old) await old.unsubscribe();
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64(VAPID_PUBLIC) });
+    await api("/push/subscribe", { method: "POST", body: JSON.stringify({ subscription: sub.toJSON() }) });
+    nudgeOn = true; syncPrefs();
     st.textContent = "Notifications enabled on this device ✓";
+  } catch (err) { st.textContent = "Error: " + err.message; }
+}
+
+async function disablePush() {
+  const st = document.getElementById("pushStatus");
+  try {
+    const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription();
+    if (sub) { if (aiOn()) await api("/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint: sub.endpoint }) }); await sub.unsubscribe(); }
+    st.textContent = "Notifications are off on this device.";
   } catch (err) { st.textContent = "Error: " + err.message; }
 }
 
