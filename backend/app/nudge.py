@@ -3,7 +3,6 @@
 Ported from the Apps Script makeNudge, but per user and timezone-aware: the 8pm kickoff and the 9pm
 follow-up (only if nothing was ticked yet) happen at 8pm and 9pm where that person lives; Sundays rest.
 """
-import re
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -12,7 +11,6 @@ from fastapi import HTTPException
 from .gemini import Gemini
 
 DEFAULT_TZ = "Asia/Dubai"
-LESSON = re.compile(r"^w\d+t\d+$")
 FAST_ONLY = ("gemini-flash-lite-latest",)     # a nudge must be quick; the lite model is enough
 
 
@@ -38,45 +36,44 @@ def stage_for(local: datetime) -> str | None:
     return {20: "1", 21: "2"}.get(local.hour)
 
 
-def lessons_done(ticks: list[dict]) -> int:
-    return sum(1 for t in ticks if LESSON.match(t["id"]))
-
-
 def ticked_on(ticks: list[dict], day: str) -> bool:
     return any(str(t["done_on"])[:10] == day for t in ticks)
 
 
-def skip_reason(stage: str, ticked_today: bool, next_task: str) -> str | None:
-    if not next_task:
-        return "nothing planned"
+def skip_reason(stage: str, ticked_today: bool, focus: str) -> str | None:
+    """focus is empty when every weekly goal is met (or none is set): nothing to nudge about."""
+    if not focus:
+        return "goals met"
     if stage == "2" and ticked_today:
         return "already studied"
     return None
 
 
-async def write(ai: Gemini, *, stage: str, done: int, next_task: str) -> tuple[str, str]:
+async def write(ai: Gemini, *, stage: str, focus: str) -> tuple[str, str]:
     """Title and body for the push. Falls back to a plain line if the model is busy."""
     follow_up = stage == "2"
-    prompt = (f"Write a push notification (under 45 words) for a learner working through an AI-engineering study plan. "
-              f"{done} plan lessons done so far. Tonight's 35-minute task: {next_task}. "
-              + ("This is a gentle 9pm follow-up: they have not started yet tonight. Encourage starting now, even a "
+    prompt = ("Write a push notification (under 45 words) for a learner with weekly study goals. "
+              f"Where they stand this week, track by track (behind first): {focus}. "
+              "Point at ONE concrete next step, the first one listed. "
+              + ("This is a gentle 9pm follow-up: they have not studied yet today. Encourage starting now, even a "
                  "small version. Never guilt-trip."
                  if follow_up else "This is the 8pm kickoff nudge. Be concrete and motivating.")
-              + " If the task clearly needs a PC and they might be out, suggest a phone alternative (Colab, or a quiz "
-                "in the app). No emoji, no greetings.")
+              + " If the step clearly needs a PC and they might be out, suggest a phone alternative (a quiz in the "
+                "app). No emoji, no greetings, no names.")
     title = "Still time tonight" if follow_up else "Study time"
     try:
         body = (await ai.ask(prompt, temperature=0.8, thinking_budget=0, models=FAST_ONLY)).strip()
     except HTTPException:
         body = ""
-    return title, body or f"Tonight: {next_task} (35 min). Small steps count."
+    return title, body or f"Tonight: {focus.split('. ')[0]}. Small steps count."
 
 
-async def quote(ai: Gemini, *, done: int, ticked_today: bool, next_task: str) -> str:
-    prompt = ("Write ONE motivational line (max 18 words) for a learner working through an AI-engineering study plan. "
-              f"They have completed {done} plan lessons and have {'already' if ticked_today else 'not yet'} studied today. "
-              f"Next lesson: {next_task or 'none left'}. Vary style: sometimes progress, sometimes identity, "
-              "sometimes momentum. No emoji, no quotation marks, no preamble.")
+async def quote(ai: Gemini, *, ticked_today: bool, focus: str) -> str:
+    prompt = ("Write ONE motivational line (max 18 words) for a learner with weekly study goals. "
+              f"They have {'already' if ticked_today else 'not yet'} studied today. "
+              f"Where they stand this week: {focus or 'every weekly goal is met'}. "
+              "Vary style: sometimes progress, sometimes identity, sometimes momentum. "
+              "No emoji, no quotation marks, no names, no preamble.")
     try:
         return (await ai.ask(prompt, temperature=0.9, thinking_budget=0, models=FAST_ONLY)).strip().strip('"')
     except HTTPException:

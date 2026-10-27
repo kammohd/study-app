@@ -53,7 +53,7 @@ def device(db, uid="u1", endpoint=GOOD):
     db.t["push_subs"].append({"user_id": uid, "endpoint": endpoint, "sub": {"endpoint": endpoint, "keys": {}}})
 
 
-def prefs(db, uid="u1", tz="Asia/Dubai", next_task="Week 3, day 2: Requests", enabled=True, last=""):
+def prefs(db, uid="u1", tz="Asia/Dubai", next_task="Python & AI: 2 of 6 lessons this week, next: Week 3, day 2: Requests. DSA: 0 of 3 topics this week, next: Graphs", enabled=True, last=""):
     db.t["nudge_prefs"].append({"user_id": uid, "tz": tz, "next_task": next_task, "enabled": enabled, "last_nudge": last})
 
 
@@ -152,7 +152,7 @@ def test_each_person_gets_their_own_local_time(api):
     assert [x["user"] for x in r["results"]] == ["u1"] and [s[0] for s in sent] == [GOOD]
 
 
-def test_follow_up_is_skipped_if_they_already_studied_or_nothing_is_planned(api):
+def test_follow_up_is_skipped_if_they_already_studied_or_every_goal_is_met(api):
     c, db, ai, sent, mp = api
     device(db); prefs(db)
     db.t["ticks"] = [{"user_id": "u1", "id": "w3t1", "done_on": "2026-10-26"}]
@@ -160,7 +160,7 @@ def test_follow_up_is_skipped_if_they_already_studied_or_nothing_is_planned(api)
     assert c.post("/internal/nudge", headers=CRON).json()["results"] == [{"user": "u1", "skipped": "already studied"}]
     db.t["nudge_prefs"][0]["next_task"] = ""
     at(mp, MON_8PM_DUBAI)
-    assert c.post("/internal/nudge", headers=CRON).json()["results"] == [{"user": "u1", "skipped": "nothing planned"}]
+    assert c.post("/internal/nudge", headers=CRON).json()["results"] == [{"user": "u1", "skipped": "goals met"}]
     assert not sent
 
 
@@ -200,3 +200,21 @@ def test_quote_is_cached_per_person_and_falls_back(api):
     from fastapi import HTTPException
     ai.replies = [HTTPException(503, "busy")]
     assert c.get("/quote", headers=token()).json() == {"quote": "Consistency beats intensity."}
+
+
+def test_prompts_carry_the_users_goals_and_no_personal_details(api):
+    c, db, ai, sent, mp = api
+    seen = []
+    orig = ai.ask
+
+    async def spy(prompt, **opts):
+        seen.append(prompt)
+        return await orig(prompt, **opts)
+    ai.ask = spy
+    device(db); prefs(db)
+    ai.replies = ["nudge", "quote"]
+    at(mp, MON_8PM_DUBAI)
+    c.post("/internal/nudge", headers=CRON)
+    c.get("/quote", headers=token())
+    assert all("DSA: 0 of 3 topics" in p for p in seen) and len(seen) == 2          # other tracks reach the prompt
+    assert not any(n in p for p in seen for n in ("Mohammad", "Salesforce manager"))

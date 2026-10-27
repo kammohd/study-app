@@ -73,7 +73,7 @@ async def unsubscribe(req: Unsubscribe, user: User = Depends(allowlisted_user), 
 
 class Prefs(BaseModel):
     tz: str = Field(max_length=64)
-    next_task: str = Field("", max_length=300)      # the first lesson not yet ticked; "" when the plan is finished
+    next_task: str = Field("", max_length=600)      # what to nudge about: this week's unmet goals and the next step in each; "" = all met
     enabled: bool = True
 
 
@@ -99,8 +99,7 @@ async def get_quote(user: User = Depends(allowlisted_user), db: Supabase = Depen
     prefs = await db.admin_get("nudge_prefs", {"user_id": f"eq.{user.id}", "select": "tz,next_task"})
     p = prefs[0] if prefs else {"tz": nudge.DEFAULT_TZ, "next_task": ""}
     today = utcnow().astimezone(nudge.zone(p["tz"])).date().isoformat()
-    text = await nudge.quote(ai, done=nudge.lessons_done(ticks), ticked_today=nudge.ticked_on(ticks, today),
-                             next_task=p["next_task"])
+    text = await nudge.quote(ai, ticked_today=nudge.ticked_on(ticks, today), focus=p["next_task"])
     _quotes[user.id] = (time.time(), text)
     return {"quote": text}
 
@@ -142,7 +141,7 @@ async def run_nudges(req: NudgeRun | None = None, x_cron_token: str = Header("")
         if why:
             report.append({"user": uid[:8], "skipped": why})
             continue
-        title, body = await nudge.write(ai, stage=stage, done=nudge.lessons_done(ticks), next_task=p["next_task"])
+        title, body = await nudge.write(ai, stage=stage, focus=p["next_task"])
         if req.dry_run:
             report.append({"user": uid[:8], "would_send": body})
             continue

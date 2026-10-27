@@ -997,10 +997,21 @@ function save() { localStorage.setItem("prog", JSON.stringify(state)); localStor
 
 // The server writes the nudge text, but only the app knows the plan. After progress changes, tell it which
 // lesson is next and where "8pm" is for this person (their device timezone). Debounced; silent when signed out.
-function nextTask() {
-  for (let w = 0; w < W.length; w++) for (let i = 0; i < W[w].ts.length; i++)
-    if (!state["w" + (w + 1) + "t" + i]) return ("Week " + (w + 1) + ", day " + (i + 1) + ": " + W[w].ts[i]).slice(0, 300);
-  return "";
+// What to nudge about: every track still short of this week's goal, with the next step in each (max 3).
+// Empty when all goals are met, which tells the server to stay quiet.
+function nudgeFocus() {
+  const lines = [];
+  for (const id of Object.keys(TR)) {
+    const g = goalOf(id), n = weekDone(id);
+    if (g <= 0 || n >= g) continue;
+    let next = "";
+    if (id === "py") {
+      outer: for (let w = 0; w < W.length; w++) for (let i = 0; i < W[w].ts.length; i++)
+        if (!state["w" + (w + 1) + "t" + i]) { next = "Week " + (w + 1) + ", day " + (i + 1) + ": " + W[w].ts[i]; break outer; }
+    } else { const tp = nextTopic(id); next = tp ? tp.title : ""; }
+    lines.push(TR[id].name + ": " + n + " of " + g + " " + unitOf(id) + " this week" + (next ? ", next: " + next : ""));
+  }
+  return lines.slice(0, 3).join(". ").slice(0, 580);
 }
 let prefsTimer = 0, nudgeOn = true;
 function syncPrefs() {
@@ -1008,7 +1019,7 @@ function syncPrefs() {
   clearTimeout(prefsTimer);
   prefsTimer = setTimeout(() => {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Dubai";
-    api("/me/nudge", { method: "PUT", body: JSON.stringify({ tz: tz, next_task: nextTask(), enabled: nudgeOn }) }).catch(() => {});
+    api("/me/nudge", { method: "PUT", body: JSON.stringify({ tz: tz, next_task: nudgeFocus(), enabled: nudgeOn }) }).catch(() => {});
   }, 4000);
 }
 
@@ -1083,7 +1094,7 @@ async function cloudSync() {
       save();
     }
     goals = { ...goals, ...goalsCloud }; try { localStorage.setItem("goals", JSON.stringify(goals)); } catch (e) {}
-    cloudMsg = ""; setDot("ok", "cloud synced");
+    cloudMsg = ""; setDot("ok", "cloud synced"); syncPrefs();
     if (me.is_admin) await adminLoad(true);
   } catch (e) { cloudMsg = "Sync failed: " + e.message; setDot("err", "sync failed"); }
 }
@@ -1318,6 +1329,7 @@ function setGoal(id, delta) {
   goals[id] = Math.max(0, Math.min(id === "py" ? 12 : 14, goalOf(id) + delta));
   try { localStorage.setItem("goals", JSON.stringify(goals)); } catch (e) {}
   if (me) api("/goals", { method: "PUT", body: JSON.stringify(goals) }).catch(() => {});
+  syncPrefs();
   render();
 }
 // Monday of this week (offset -1 = last week) as a local date string; weeks reset every Monday, nothing carries a debt.
@@ -2024,7 +2036,7 @@ if (sb) sb.auth.onAuthStateChange((ev, session) => {
     }, 0);
   }
 });
-loadTracks().then(render);
+loadTracks().then(() => { render(); syncPrefs(); });
 pull().then(render);
 setInterval(refresh, 60000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
