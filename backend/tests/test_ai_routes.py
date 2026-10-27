@@ -148,9 +148,20 @@ def test_wrong_answer_comes_back_until_right(api):
 
 def test_unverifiable_batch_reports_an_error_not_a_crash(api):
     c, db, ai = api
-    ai.replies = [[question()], [{"i": 0, "answer": 1, "sure": True}]]    # blind check disagrees
+    bad = [[question()], [{"i": 0, "answer": 1, "sure": True}]]            # blind check disagrees
+    ai.replies = bad + bad                                                 # both attempts fail
     r = c.post("/quiz/next", headers=token(), json=PY).json()
     assert "error" in r and r["topic_id"] == "w3" and db.t["question_bank"] == []
+    assert db.t["ai_usage"][0]["calls"] == 1                               # the retry is free
+
+
+def test_one_bad_batch_is_retried_automatically(api):
+    c, db, ai = api
+    ai.replies = [[question()], [{"i": 0, "answer": 1, "sure": True}],     # first batch rejected
+                  [question()], verdicts(1)]                               # second passes
+    r = c.post("/quiz/next", headers=token(), json=PY).json()
+    assert r["question"].startswith("Which structure") and ai.calls == 4
+    assert db.t["ai_usage"][0]["calls"] == 1
 
 
 def test_daily_limit_blocks_generation(api):

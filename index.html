@@ -1022,6 +1022,13 @@ async function api(path, opts) {
 // AI features need a signed-in, invited account; the backend checks the same thing on every call.
 const aiOn = () => !!(me && me.ai_allowed);
 const SIGN_IN_AI = "Sign in on the Me tab with an approved account to use AI.";
+// First load of a topic can fail once (cold server, or a batch that did not pass verification); try again quietly.
+// A 200 reply can still carry {error} (nothing usable was written); count that as a failure worth one retry.
+async function aiPost(path, body) {
+  const go = async () => { const d = await api(path, { method: "POST", body: JSON.stringify(body) }); if (d.error) throw new Error(d.error); return d; };
+  try { return await go(); }
+  catch (e) { await new Promise(r => setTimeout(r, 1500)); return go(); }
+}
 
 async function flushCloud() {
   const ids = Object.keys(cq);
@@ -1193,7 +1200,7 @@ let preQ = null;
 async function fetchQ() {
   const w = qWeek || curWeek(), wk = W[w - 1];
   const recent = wk.ts.filter((_, i) => state["w" + w + "t" + i]).join("; ");
-  const d = await api("/quiz/next", { method: "POST", body: JSON.stringify({ track: "py", topic_id: "w" + w, week: w, theme: wk.th, recent: recent.slice(0, 1400) }) });
+  const d = await aiPost("/quiz/next", { track: "py", topic_id: "w" + w, week: w, theme: wk.th, recent: recent.slice(0, 1400) });
   if (!d.question || !d.options) throw new Error("bad");
   return d;
 }
@@ -1412,8 +1419,8 @@ async function topicQuiz(key) {
   tq = { key: key, busy: true }; render();
   try {
     const src = tp.obj.length ? tp.obj.join("\n") : tp.focus;
-    const d = await api("/quiz/next", { method: "POST", body: JSON.stringify({ track: trackOf(tp), topic_id: String(tp.id),
-      week: curWeek(), topic: tp.title || "", section: tp.section || "", source: String(src || "").slice(0, 4000) }) });
+    const d = await aiPost("/quiz/next", { track: trackOf(tp), topic_id: String(tp.id),
+      week: curWeek(), topic: tp.title || "", section: tp.section || "", source: String(src || "").slice(0, 4000) });
     if (d.topic_id !== String(tp.id)) throw new Error("backend");
     if (!d.question || !d.options) throw new Error(d.error ? String(d.error).slice(0, 80) : "bad question");
     tq = { key: key, q: d };
@@ -1716,9 +1723,9 @@ async function newChallenge(wk, btn) {
       const doneTasks = tp ? [] : W[wk-1].ts.filter((_, i) => state["w" + wk + "t" + i]);
       const avoid = (EX[wk] || []).map(e => e.t);
       const key = tp ? String(tp.id) : "w" + wk;
-      const d = await api("/challenge/next", { method: "POST", body: JSON.stringify({
+      const d = await aiPost("/challenge/next", {
         track: tp ? trackOf(tp) : "py", key: key, avoid: avoid.slice(-60), theme: tp ? tp.title : W[wk-1].th,
-        week: tp ? null : wk, recent: doneTasks.join("; ").slice(0, 1400), source: tp ? String(tp.focus || "").slice(0, 2000) : "" }) });
+        week: tp ? null : wk, recent: doneTasks.join("; ").slice(0, 1400), source: tp ? String(tp.focus || "").slice(0, 2000) : "" });
       if (d.key !== key) throw new Error("backend");
       if (!d.scaffold || !d.test || !d.solution) throw new Error(d.error ? String(d.error).slice(0, 60) : "backend");
       py.globals.set("_user_code", d.solution);

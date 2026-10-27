@@ -51,6 +51,13 @@ def servable(bank: list[dict], states: dict[int, dict], today: str) -> list[dict
     return [r for _, _, r in sorted(ready, key=lambda t: t[:2])]
 
 
+async def _generate(req: QuizReq, ai: Gemini, avoid: list[str]) -> list[dict]:
+    if req.track == "py":
+        return await quizgen.week_batch(ai.ask, week=req.week or 0, theme=req.theme, recent=req.recent, avoid=avoid)
+    return await quizgen.topic_batch(ai.ask, track=req.track, topic=req.topic, section=req.section,
+                                     source=req.source, avoid=avoid)
+
+
 @router.post("/quiz/next")
 async def quiz_next(req: QuizReq, user: User = Depends(allowlisted_user), db: Supabase = Depends(Supabase.dep),
                     ai: Gemini = Depends(get_gemini), cfg: Settings = Depends(get_settings)):
@@ -65,15 +72,17 @@ async def quiz_next(req: QuizReq, user: User = Depends(allowlisted_user), db: Su
     if not ready:       # bank dry: ONE generation call (plus its verification call), then serve from the result
         await spend_ai_call(user, db, cfg.daily_ai_limit)
         avoid = [r["question"] for r in bank]
-        try:
-            if req.track == "py":
-                made = await quizgen.week_batch(ai.ask, week=req.week or 0, theme=req.theme, recent=req.recent, avoid=avoid)
-            else:
-                made = await quizgen.topic_batch(ai.ask, track=req.track, topic=req.topic, section=req.section,
-                                                 source=req.source, avoid=avoid)
-        except (ValueError, KeyError, TypeError) as e:     # unreadable model output or a missing source
-            return {"topic_id": req.topic_id, "error": str(e)[:120] or RETRY_MSG}
-        made = [m for m in made if m["question"] not in set(avoid)]
+        made, err = [], ""
+        for _ in range(2):      # a batch can lose every question at the blind check; one retry, same quota charge
+            try:
+                made = await _generate(req, ai, avoid)
+            except (ValueError, KeyError, TypeError) as e:     # unreadable model output or a missing source
+                made, err = [], str(e)[:120]
+            made = [m for m in made if m["question"] not in set(avoid)]
+            if made:
+                break
+        if not made and err:
+            return {"topic_id": req.topic_id, "error": err}
         if made:
             rows = [{"track": req.track, "topic_id": req.topic_id, "question": m["question"], "options": m["options"],
                      "correct": m["correct"], "explanation": m.get("explanation") or "",
