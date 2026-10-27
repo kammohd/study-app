@@ -1,12 +1,12 @@
 """Study app API. Run locally:  uvicorn app.main:app --reload"""
 import re
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from . import ai_routes, push_routes
+from . import admin_routes, ai_routes, push_routes
 from .auth import User, admin_user, allowlisted_user, current_user
 from .config import Settings, get_settings
 from .db import Supabase
@@ -36,6 +36,12 @@ async def me(user: User = Depends(current_user), db: Supabase = Depends(Supabase
     if user.email:
         rows = await db.admin_get("allowed_emails", {"email": f"eq.{user.email}", "select": "email,is_admin"})
         row = rows[0] if rows else None
+    if row:     # lets the admin board map a login to an email and show when they were last here; never blocks sign-in
+        try:
+            await db.admin_upsert("profiles", [{"user_id": user.id, "email": user.email,
+                                                "last_seen": datetime.now(timezone.utc).isoformat()}], "user_id")
+        except HTTPException:
+            pass
     return {"id": user.id, "email": user.email, "ai_allowed": row is not None,
             "is_admin": bool(row and row.get("is_admin"))}
 
@@ -104,6 +110,7 @@ async def add_attempt(a: Attempt, user: User = Depends(current_user), db: Supaba
 
 app.include_router(ai_routes.router)
 app.include_router(push_routes.router)
+app.include_router(admin_routes.router)
 
 
 @app.get("/ai/quota")

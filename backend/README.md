@@ -20,6 +20,8 @@ FastAPI on Cloud Run ──► Supabase Postgres (row-level security on every ta
   and written with the user's own token, so Postgres row-level security keeps people apart.
 - **AI routes and push registration** also require the email to be on the invite list, and AI calls count
   against a daily per-user limit (`DAILY_AI_LIMIT`, default 20).
+- **`/admin/activity`** checks `is_admin` on the server. The `profiles` table (login to email, last seen) is closed to
+  browsers; `/me` fills it for invited people only.
 - **The shared question and challenge banks** are written only by the backend (secret key) and are read-only
   to users.
 - **`/internal/nudge`** is not for browsers: it needs the `x-cron-token` header and is closed if no token is set.
@@ -40,6 +42,7 @@ FastAPI on Cloud Run ──► Supabase Postgres (row-level security on every ta
 | `PUT /me/nudge` | the app's timezone and this week's unmet goals, which the nudge is written from |
 | `POST /internal/nudge` | hourly job: sends the 8pm kickoff and 9pm follow-up at each person's local time |
 | `GET/POST/DELETE /admin/emails` | invite list (admins only) |
+| `GET /admin/activity` | admins only: each invited person's week so far (items done, goals met, streak, quiz accuracy, challenges, AI calls today, last active), ranked. Mirrors the app's goal defaults and Monday-to-Monday week. |
 
 Errors from generation come back as `200` with an `{"error": ...}` field; quota is `429`; the model being down is `503`.
 
@@ -83,7 +86,8 @@ Never commit `.env` or paste a secret in a chat or an issue.
 ## Database
 
 Run once in the Supabase SQL editor, in order: `schema.sql`, `schema_phase3.sql` (banks and per-user
-state), `schema_step3.sql` (push devices and nudge settings). All three are safe to re-run.
+state), `schema_step3.sql` (push devices and nudge settings), `schema_leaderboard.sql` (profiles for the admin board).
+All are safe to re-run.
 
 ## Run and test locally
 

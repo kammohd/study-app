@@ -143,7 +143,6 @@
   .step { display: flex; align-items: center; gap: 8px; }
   .step b { min-width: 22px; text-align: center; font-size: 16px; }
   .step button { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--border-strong); background: var(--card); color: var(--text); font-size: 20px; font-weight: 700; cursor: pointer; }
-  .soon { opacity: .6; }
   .foot { max-width: 560px; margin: 18px auto 0; padding: 0 14px; font-size: 12px; color: var(--muted); text-align: center; }
   .foot a { color: var(--muted); text-decoration: underline; }
 </style>
@@ -1027,7 +1026,7 @@ function syncPrefs() {
 // The key below is the public (publishable) one; row-level security and the invite list do the guarding.
 const API = "https://study-app-api-307052594061.us-central1.run.app";
 const sb = window.supabase ? window.supabase.createClient("https://wmsmlvmcexfanlfxupxi.supabase.co", "sb_publishable_YqNDnrH2IayFM1hR07_uFQ_1CrCslkF") : null;
-let me = null, cloudMsg = "", adminList = null, adminMsg = "";
+let me = null, cloudMsg = "", adminList = null, adminMsg = "", team = null;
 let cq = {}; try { cq = JSON.parse(localStorage.getItem("cq")) || {}; } catch (e) {}
 const saveCq = () => { try { localStorage.setItem("cq", JSON.stringify(cq)); } catch (e) {} };
 const isDate = v => /^\d{4}-\d\d-\d\d$/.test(v);
@@ -1107,10 +1106,10 @@ async function signIn() {
   const { error } = await sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } });
   if (error) { cloudMsg = error.message; render(); }
 }
-async function signOut() { await sb.auth.signOut(); me = null; adminList = null; setDot("", "local only"); render(); }
+async function signOut() { await sb.auth.signOut(); me = null; adminList = null; team = null; setDot("", "local only"); render(); }
 
 async function adminLoad(quiet) {
-  try { adminList = await api("/admin/emails"); adminMsg = ""; } catch (e) { adminMsg = e.message; }
+  try { [adminList, team] = await Promise.all([api("/admin/emails"), api("/admin/activity")]); adminMsg = ""; } catch (e) { adminMsg = e.message; }
   if (!quiet) render();
 }
 async function adminAdd() {
@@ -1127,6 +1126,27 @@ async function adminRemove(email) {
 }
 const escA = s => esc(s).replace(/"/g, "&quot;");
 
+// Admin only (the server enforces it): who is doing what this week, ranked by lessons and topics done.
+const ago = d => {
+  if (!d) return "never";
+  const n = Math.floor((Date.now() - new Date(String(d).length > 10 ? d : d + "T23:59:59")) / 864e5);
+  return n <= 0 ? "today" : n === 1 ? "yesterday" : n + " days ago";
+};
+function rTeam() {
+  if (!team) return `<div class="card"><h2>Team this week</h2><p class="muted">${adminMsg ? esc(adminMsg) : "Loading…"}</p></div>`;
+  const medal = ["🥇", "🥈", "🥉"];
+  const rows = team.users.map((u, i) => {
+    const name = esc(u.email.split("@")[0]) + (u.is_admin ? ' <span class="muted">admin</span>' : "");
+    if (!u.joined) return `<div class="goalrow"><div><b>${name}</b><div class="muted">invited · hasn't signed in yet</div></div></div>`;
+    const acc = u.quiz_total ? u.quiz_right + "/" + u.quiz_total : "–";
+    return `<div class="goalrow"><div><b>${u.items_week ? (medal[i] || (i + 1) + ".") : (i + 1) + "."} ${name}</b>
+      <div class="muted">${u.items_week} done · goals ${u.goals_met}/${u.goals_total} · 🔥 ${u.streak} day${u.streak === 1 ? "" : "s"} · active ${ago(u.last_seen)}</div>
+      <div class="muted">py ${u.done.py} · dsa ${u.done.dsa} · sf ${u.done.sf} · sql ${u.done.sql} · quiz ${acc} · challenges ${u.challenges_solved} · AI today ${u.ai_today}</div></div></div>`;
+  }).join("");
+  return `<div class="card"><h2>Team this week</h2><p class="muted">Week of ${esc(team.week_start)} · ranked by lessons and topics done. Only admins see this.</p>${rows}
+    <button class="btn ghost" onclick="adminLoad()">↻ Refresh</button></div>`;
+}
+
 function rAccount() {
   if (!sb) return `<div class="card"><h2>Account</h2><p class="muted">Sign-in needs a connection. Your progress is still saved on this device.</p></div>`;
   const err = authErr ? "This Google account is not on the invite list. Ask the app owner to add your email." : cloudMsg;
@@ -1134,7 +1154,7 @@ function rAccount() {
   if (!me) return `<div class="card"><h2>Account</h2>
     <p class="muted">Sign in to sync your progress across devices. The app is invite-only, and it works without signing in too.</p>${msg}
     <button class="btn primary undone" onclick="signIn()">Sign in with Google</button></div>`;
-  const admin = !me.is_admin ? "" : `<div class="card"><h2>Invited emails</h2>
+  const admin = !me.is_admin ? "" : rTeam() + `<div class="card"><h2>Invited emails</h2>
     ${(adminList || []).map(r => `<div class="goalrow"><div><b>${esc(r.email)}</b>${r.is_admin ? ' <span class="muted">admin</span>' : ""}</div>
       ${r.is_admin ? "" : `<button class="btn ghost" style="width:auto;margin:0;padding:8px 14px" data-e="${escA(r.email)}" onclick="adminRemove(this.dataset.e)">Remove</button>`}</div>`).join("")}
     <input type="text" inputmode="email" autocapitalize="off" id="invIn" placeholder="friend@gmail.com">
@@ -1908,7 +1928,7 @@ function rPlan() {
 
 // Library = every track and topic; Create with AI arrives with the Supabase phase.
 function rLib() {
-  return rBar() + rTrack(learnTrack) + `<div class="card soon"><h2>✨ Create a topic with AI</h2><p class="muted">Pick any subject and get notes with sources, flashcards and a quiz, built on the spot. Coming next.</p></div>`;
+  return rBar() + rTrack(learnTrack);
 }
 
 function answerStatic(btn, i, right) {

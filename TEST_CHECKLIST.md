@@ -95,4 +95,13 @@ select user_id, split_part(endpoint, '/', 3) as push_service, updated_at from pu
 select user_id, tz, enabled, last_nudge, left(next_task, 80) as summary from nudge_prefs;
 ```
 
+## 10. Admin team board
+
+- [ ] A (admin) sees **Team this week** at the top of the admin section in the Me tab; B does **not** see it.
+- [ ] Each person who has signed in appears, ranked by lessons and topics done this week; the leader has a medal.
+- [ ] An invited email that has never signed in shows "invited · hasn't signed in yet", listed last.
+- [ ] After B ticks a lesson, A taps **Refresh** and B's "done" count and "active today" update.
+- [ ] Calling `GET /admin/activity` with B's login returns 403 (the server enforces it, not just the screen).
+- [ ] The card shows no answers or code, only counts.
+
 Phase 3 is **done** when every box above passes for both users.
