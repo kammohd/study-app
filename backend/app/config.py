@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_publishable_key: str
     supabase_secret_key: str = ""      # only the backend holds this; it bypasses row-level security
+    gemini_api_key: str = ""           # from Secret Manager on Cloud Run; empty = AI endpoints answer 503
     daily_ai_limit: int = 20
     cors_origins: str = "https://kammohd.github.io"
 

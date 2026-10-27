@@ -6,9 +6,11 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from . import ai_routes
 from .auth import User, admin_user, allowlisted_user, current_user
 from .config import Settings, get_settings
 from .db import Supabase
+from .quota import calls_today, spend_ai_call  # noqa: F401  (spend_ai_call is used by tests)
 
 settings = get_settings()
 app = FastAPI(title="Study app API")
@@ -98,28 +100,15 @@ async def add_attempt(a: Attempt, user: User = Depends(current_user), db: Supaba
     return {"ok": True}
 
 
-# ---- AI quota (the Gemini topic builder in phase 3 will call spend_ai_call) ----
+# ---- AI: quota here, quizzes / challenges / hints in ai_routes ----
 
-async def _calls_today(user: User, db: Supabase) -> int:
-    rows = await db.admin_get("ai_usage", {"user_id": f"eq.{user.id}", "day": f"eq.{date.today().isoformat()}",
-                                           "select": "calls"})
-    return rows[0]["calls"] if rows else 0
-
-
-async def spend_ai_call(user: User, db: Supabase, limit: int) -> int:
-    """Count one AI call for today; refuse when the daily limit is reached. Returns calls left."""
-    used = await _calls_today(user, db)
-    if used >= limit:
-        raise HTTPException(429, f"Daily AI limit of {limit} reached; try again tomorrow")
-    await db.admin_upsert("ai_usage", [{"user_id": user.id, "day": date.today().isoformat(), "calls": used + 1}],
-                          "user_id,day")
-    return limit - used - 1
+app.include_router(ai_routes.router)
 
 
 @app.get("/ai/quota")
 async def ai_quota(user: User = Depends(allowlisted_user), db: Supabase = Depends(Supabase.dep),
                    cfg: Settings = Depends(get_settings)):
-    used = await _calls_today(user, db)
+    used = await calls_today(user, db)
     return {"limit": cfg.daily_ai_limit, "used": used, "left": cfg.daily_ai_limit - used}
 
 

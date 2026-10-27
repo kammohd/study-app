@@ -1016,9 +1016,12 @@ async function api(path, opts) {
   const t = data.session && data.session.access_token;
   if (!t) throw new Error("Signed out");
   const r = await fetch(API + path, { ...opts, headers: { authorization: "Bearer " + t, "content-type": "application/json" } });
-  if (!r.ok) throw new Error(((await r.json().catch(() => ({}))).detail) || ("Error " + r.status));
+  if (!r.ok) { const d = (await r.json().catch(() => ({}))).detail; throw new Error(typeof d === "string" ? d : "Error " + r.status); }
   return r.json();
 }
+// AI features need a signed-in, invited account; the backend checks the same thing on every call.
+const aiOn = () => !!(me && me.ai_allowed);
+const SIGN_IN_AI = "Sign in on the Me tab with an approved account to use AI.";
 
 async function flushCloud() {
   const ids = Object.keys(cq);
@@ -1188,17 +1191,18 @@ async function loadQuote() {
 
 let preQ = null;
 async function fetchQ() {
-  const r = await fetch(cfg(), { method: "POST", body: JSON.stringify({ quiz: "next", week: qWeek || curWeek() }) });
-  const d = await r.json();
+  const w = qWeek || curWeek(), wk = W[w - 1];
+  const recent = wk.ts.filter((_, i) => state["w" + w + "t" + i]).join("; ");
+  const d = await api("/quiz/next", { method: "POST", body: JSON.stringify({ track: "py", topic_id: "w" + w, week: w, theme: wk.th, recent: recent.slice(0, 1400) }) });
   if (!d.question || !d.options) throw new Error("bad");
   return d;
 }
 async function prefetchQ() {
-  if (preQ || !cfg()) return;
+  if (preQ || !aiOn()) return;
   try { preQ = await fetchQ(); } catch(e) {}
 }
 async function nextQ() {
-  if (!cfg()) { curQ = null; render(); return; }
+  if (!aiOn()) { curQ = null; render(); return; }
   answered = false;
   if (preQ) { curQ = preQ; preQ = null; render(); prefetchQ(); return; }
   qBusy = true; qErr = false; curQ = null; render();
@@ -1213,15 +1217,10 @@ function answerQ(btn, i) {
   const right = Number(curQ.correct);
   document.querySelectorAll(".quizopt").forEach((b, j) => { if (j === right) b.classList.add("right"); });
   track("quiz", curQ.question, i === right, qWeek || curWeek());
-  if (i !== right) {
-    btn.classList.add("wrong");
-    // wrong → back into the bank as "retry": it resurfaces until answered right
-    if (cfg()) fetch(cfg(), { method: "POST", body: JSON.stringify({ quiz: "missed", question: curQ.question }) }).catch(() => {});
-  }
-  else {
-    qScore++;
-    fetch(cfg(), { method: "POST", body: JSON.stringify({ quiz: "mastered", question: curQ.question }) }).catch(() => {});
-  }
+  if (i !== right) btn.classList.add("wrong");
+  else qScore++;
+  // right → never again; wrong → resurfaces until answered right
+  if (aiOn() && curQ.id) api("/quiz/result", { method: "POST", body: JSON.stringify({ question_id: curQ.id, ok: i === right }) }).catch(() => {});
   const s = document.getElementById("qScore");
   if (s) s.textContent = "score " + qScore;
 }
@@ -1252,8 +1251,6 @@ function track(kind, ref, ok, wk) {
   if (me && (kind === "quiz" || kind === "challenge")) {
     api("/attempts", { method: "POST", body: JSON.stringify({ track: wk > 300 ? "sql" : wk > 200 ? "sf" : wk > 100 ? "dsa" : "py", kind: kind, ref: String(ref).slice(0, 120), ok: !!ok }) }).catch(() => {});
   }
-  // fire-and-forget permanent record in the Sheet ("attempts" tab)
-  if (cfg()) fetch(cfg(), { method: "POST", body: JSON.stringify({ attempt: { date: localDate(), week: wk, kind: kind, ref: String(ref).slice(0, 80), ok: ok ? 1 : 0 } }) }).catch(() => {});
 }
 
 function accStats(w) {
@@ -1389,7 +1386,7 @@ function openTopic(key) {
   if (tp.py) {
     if (qWeek !== tp.wk) { preQ = null; curQ = null; qErr = false; qBusy = false; }
     qWeek = tp.wk;
-    if (cfg() && !curQ && !qBusy && !qErr) nextQ();
+    if (aiOn() && !curQ && !qBusy && !qErr) nextQ();
   }
   render(); window.scrollTo(0, 0);
 }
@@ -1415,10 +1412,9 @@ async function topicQuiz(key) {
   tq = { key: key, busy: true }; render();
   try {
     const src = tp.obj.length ? tp.obj.join("\n") : tp.focus;
-    const r = await fetch(cfg(), { method: "POST", body: JSON.stringify({ quiz: "next", week: curWeek(),
-      track: trackOf(tp), topicId: tp.id, topic: tp.title, section: tp.section, source: src }) });
-    const d = await r.json();
-    if (d.topicId !== tp.id) throw new Error("backend");
+    const d = await api("/quiz/next", { method: "POST", body: JSON.stringify({ track: trackOf(tp), topic_id: String(tp.id),
+      week: curWeek(), topic: tp.title || "", section: tp.section || "", source: String(src || "").slice(0, 4000) }) });
+    if (d.topic_id !== String(tp.id)) throw new Error("backend");
     if (!d.question || !d.options) throw new Error(d.error ? String(d.error).slice(0, 80) : "bad question");
     tq = { key: key, q: d };
   } catch (e) { tq = { key: key, err: e.message }; }
@@ -1431,17 +1427,17 @@ function answerT(btn, i) {
   document.querySelectorAll(".quizopt").forEach((b, j) => { if (j === right) b.classList.add("right"); });
   if (i !== right) btn.classList.add("wrong");
   track("quiz", tp.title, i === right, tp.key);
-  fetch(cfg(), { method: "POST", body: JSON.stringify({ quiz: "topicResult", topicId: tp.id, question: tq.q.question, ok: i === right }) }).catch(() => {});
+  if (aiOn() && tq.q.id) api("/quiz/result", { method: "POST", body: JSON.stringify({ question_id: tq.q.id, ok: i === right }) }).catch(() => {});
   const why = document.getElementById("tqWhy");
   if (why) why.textContent = [tq.q.explanation, tq.q.evidence ? "Source: “" + tq.q.evidence + "”" : ""].filter(Boolean).join(" ");
 }
 function tqCard(tp) {
-  if (!cfg()) return `<div class="card"><h2>AI quiz</h2><p class="muted">Connect sync in the Me tab to get AI questions for this topic.</p></div>`;
+  if (!aiOn()) return `<div class="card"><h2>AI quiz</h2><p class="muted">${SIGN_IN_AI}</p></div>`;
   if (tq.key !== tp.key) return `<div class="card"><h2>AI quiz</h2><p class="muted">Questions are written from this topic's ${tp.obj.length ? "official exam outline" : "vetted summary"} only.</p>
     <button class="btn primary undone" onclick="topicQuiz(${tp.key})">Quiz me on this topic</button></div>`;
   if (tq.busy) return `<div class="card"><div class="spin">Writing a question from the source…</div></div>`;
   if (tq.err) return `<div class="card"><div class="muted">${tq.err === "backend"
-    ? "Backend update needed for topic quizzes. See backend/README.md in the repo."
+    ? "The server sent a question for a different topic. Try again."
     : "Couldn't get a question (" + esc(tq.err) + ")."}</div><button class="btn ghost" onclick="topicQuiz(${tp.key})">Try again</button></div>`;
   return `<div class="card"><div class="muted" style="margin-bottom:8px">AI quiz · ${esc(tp.title)}</div>
     <div class="quizq">${esc(tq.q.question)}</div>
@@ -1474,12 +1470,12 @@ function rTopicPy(tp) {
     return `<div class="taskline ${on ? 'done' : ''}"><div class="tick ${on ? 'on' : ''}" onclick="toggle('${id}')">${on ? '✓' : ''}</div>
       <div class="txt">D${i + 1}: ${esc(t)} <span class="tag">${wk.ph[i] === 'p' ? 'Phone' : 'PC'}</span></div></div>`; }).join("");
   let quiz;
-  if (!cfg()) {
+  if (!aiOn()) {
     const q = wk.quiz[0];
-    quiz = `<div class="card"><div class="muted" style="margin-bottom:8px">Quiz (offline set — connect sync in Me for AI questions)</div>
+    quiz = `<div class="card"><div class="muted" style="margin-bottom:8px">Quiz (offline set — sign in on the Me tab for AI questions)</div>
       <div class="quizq">${esc(q[0])}</div>${q[1].map((o, i) => `<button class="quizopt" onclick="answerStatic(this, ${i}, ${q[2]})">${esc(o)}</button>`).join("")}</div>`;
   } else if (qBusy) quiz = `<div class="card"><div class="spin">🧠 Writing you a fresh question…</div></div>`;
-  else if (qErr) quiz = `<div class="card"><div class="muted">Couldn't generate a question — connection issue or quota.</div><button class="btn ghost" onclick="nextQ()">Try again</button></div>`;
+  else if (qErr) quiz = `<div class="card"><div class="muted">Couldn't generate a question — connection issue or daily AI limit.</div><button class="btn ghost" onclick="nextQ()">Try again</button></div>`;
   else if (curQ) quiz = `<div class="card"><div class="muted" style="margin-bottom:8px">AI quiz · adapts to your progress · <span id="qScore">score ${qScore}</span></div>
       <div class="quizq">${esc(curQ.question)}</div>${curQ.options.map((o, i) => `<button class="quizopt" onclick="answerQ(this, ${i})">${esc(o)}</button>`).join("")}
       <button class="btn ghost" onclick="nextQ()">Next question →</button></div>`;
@@ -1691,7 +1687,7 @@ function markSolved(wk, i) {
       ex.done = 1;
       localStorage.setItem("aiSolved", (parseInt(localStorage.getItem("aiSolved")) || 0) + 1);
       // mark solved in the challenge bank (never served again) + save my code
-      if (cfg()) fetch(cfg(), { method: "POST", body: JSON.stringify({ challengeSolved: ex.t, code: ((document.getElementById("pyed_" + wk + "_" + i) || {}).value || "").slice(0, 2000) }) }).catch(() => {});
+      if (aiOn() && ex.cid) api("/challenge/solved", { method: "POST", body: JSON.stringify({ challenge_id: ex.cid, code: ((document.getElementById("pyed_" + wk + "_" + i) || {}).value || "").slice(0, 2000) }) }).catch(() => {});
     }
   } else {
     const id = "w" + wk + "e" + i;
@@ -1708,7 +1704,7 @@ function markSolved(wk, i) {
 let chBusy = false;
 async function newChallenge(wk, btn) {
   if (chBusy) return;
-  if (!cfg()) { if (btn) btn.textContent = "Connect sync first (Me tab)"; return; }
+  if (!aiOn()) { if (btn) btn.textContent = "Sign in first (Me tab)"; return; }
   chBusy = true;
   const orig = btn ? btn.textContent : "";
   try {
@@ -1719,21 +1715,21 @@ async function newChallenge(wk, btn) {
       const tp = wk > 16 ? topicByKey(wk) : null;   // 101+ / 201+ are track topics, 1-16 are plan weeks
       const doneTasks = tp ? [] : W[wk-1].ts.filter((_, i) => state["w" + wk + "t" + i]);
       const avoid = (EX[wk] || []).map(e => e.t);
-      const r = await fetch(cfg(), { method: "POST", body: JSON.stringify({
-        challenge: "next", week: tp ? curWeek() : wk, theme: tp ? tp.title : W[wk-1].th, done: doneTasks, avoid: avoid,
-        track: tp ? trackOf(tp) : "py", topicId: tp ? tp.id : "", source: tp ? tp.focus : "" }) });
-      const d = await r.json();
-      if (tp && d.topicId !== tp.id) throw new Error("backend");
+      const key = tp ? String(tp.id) : "w" + wk;
+      const d = await api("/challenge/next", { method: "POST", body: JSON.stringify({
+        track: tp ? trackOf(tp) : "py", key: key, avoid: avoid.slice(-60), theme: tp ? tp.title : W[wk-1].th,
+        week: tp ? null : wk, recent: doneTasks.join("; ").slice(0, 1400), source: tp ? String(tp.focus || "").slice(0, 2000) : "" }) });
+      if (d.key !== key) throw new Error("backend");
       if (!d.scaffold || !d.test || !d.solution) throw new Error(d.error ? String(d.error).slice(0, 60) : "backend");
       py.globals.set("_user_code", d.solution);
       py.globals.set("_test_code", d.test);
       const chk = JSON.parse(await py.runPythonAsync(CHECK_PY));
       if (!chk.ok) {
-        // broken exercise — flag banked ones so they're never served again
-        if (d.banked) fetch(cfg(), { method: "POST", body: JSON.stringify({ challengeBad: d.title }) }).catch(() => {});
+        // broken exercise — every generated challenge is banked, so retire it for everyone
+        api("/challenge/bad", { method: "POST", body: JSON.stringify({ challenge_id: d.id }) }).catch(() => {});
         continue;
       }
-      EX[wk].push({ t: d.title || "AI challenge", q: d.brief || "Solve it so the checks pass.", c: d.scaffold, test: d.test, ai: 1 });
+      EX[wk].push({ t: d.title || "AI challenge", q: d.brief || "Solve it so the checks pass.", c: d.scaffold, test: d.test, ai: 1, cid: d.id });
       chBusy = false;
       render();
       openEx(wk, EX[wk].length - 1);
@@ -1741,7 +1737,7 @@ async function newChallenge(wk, btn) {
     }
     throw new Error("got two broken generations — try again");
   } catch (e) {
-    if (btn) { btn.textContent = (e.message === "backend") ? "⚠️ Backend update needed (challenge route)" : "⚠️ " + e.message; setTimeout(() => { btn.textContent = orig; }, 4000); }
+    if (btn) { btn.textContent = (e.message === "backend") ? "⚠️ Got the wrong challenge back — try again" : "⚠️ " + e.message; setTimeout(() => { btn.textContent = orig; }, 4000); }
   }
   chBusy = false;
 }
@@ -1752,20 +1748,16 @@ async function gradeEx(wk, i) {
   const out = document.getElementById("pyout_" + wk + "_" + i);
   if (!ta || !out) return;
   out.style.display = "block";
-  if (!cfg()) { out.textContent = "Connect sync first (Me tab) — AI grading runs through your backend."; return; }
+  if (!aiOn()) { out.textContent = SIGN_IN_AI; return; }
   exBusy = true;
   out.textContent = "🧠 Asking the AI to review your answer…";
   try {
-    const r = await fetch(cfg(), { method: "POST", body: JSON.stringify({ grade: { task: EX[wk][i].q, answer: ta.value } }) });
-    const d = await r.json();
-    if (typeof d.ok === "undefined" && !d.feedback) throw new Error("backend");
+    const d = await api("/ai/grade", { method: "POST", body: JSON.stringify({ task: String(EX[wk][i].q).slice(0, 2000), answer: ta.value.slice(0, 4000) }) });
     track("graded", EX[wk][i].t, !!d.ok, wk);
     out.textContent = (d.ok ? "✅ Passed! " : "🔁 Not yet. ") + (d.feedback || "");
     if (d.ok) markSolved(wk, i);
   } catch (e) {
-    out.textContent = (e.message === "backend")
-      ? "⚠️ Backend update needed for AI grading — paste apps-script-additions.gs into your Apps Script and deploy a new version."
-      : "⚠️ Couldn't reach the backend — check your connection and try again.";
+    out.textContent = "⚠️ " + e.message;
   }
   exBusy = false;
 }
@@ -1776,18 +1768,14 @@ async function hintEx(wk, i) {
   const out = document.getElementById("pyout_" + wk + "_" + i);
   if (!ta || !out) return;
   out.style.display = "block";
-  if (!cfg()) { out.textContent = "Connect sync first (Me tab) — hints run through your backend."; return; }
+  if (!aiOn()) { out.textContent = SIGN_IN_AI; return; }
   exBusy = true;
   out.textContent = "💡 Thinking of a nudge (not the answer)…";
   try {
-    const r = await fetch(cfg(), { method: "POST", body: JSON.stringify({ hint: { task: EX[wk][i].q, code: ta.value } }) });
-    const d = await r.json();
-    if (!d.hint) throw new Error("backend");
+    const d = await api("/ai/hint", { method: "POST", body: JSON.stringify({ task: String(EX[wk][i].q).slice(0, 2000), code: ta.value.slice(0, 4000) }) });
     out.textContent = "💡 " + d.hint;
   } catch (e) {
-    out.textContent = (e.message === "backend")
-      ? "⚠️ Backend update needed for hints — paste apps-script-additions.gs into your Apps Script and deploy a new version."
-      : "⚠️ Couldn't reach the backend — check your connection and try again.";
+    out.textContent = "⚠️ " + e.message;
   }
   exBusy = false;
 }

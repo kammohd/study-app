@@ -60,6 +60,9 @@ class Supabase:
     async def admin_delete(self, table, params):
         return await self._send("DELETE", table, self._admin_headers(), params)
 
+    async def admin_patch(self, table, params, values):
+        return await self._send("PATCH", table, self._admin_headers(), params, values, "return=representation")
+
     async def admin_upsert(self, table, rows, on_conflict):
         return await self._send("POST", table, self._admin_headers(), {"on_conflict": on_conflict}, rows,
                                 "resolution=merge-duplicates,return=representation")
