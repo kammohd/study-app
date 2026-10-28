@@ -161,7 +161,7 @@
   <div class="syncdot"><div class="dot" id="syncDot"></div><span id="syncLbl">local only</span></div>
 </div>
 <main id="view"></main>
-<footer class="foot"><b>AI Study</b> · a personal study tracker · <a href="privacy.html">Privacy Policy</a> · <a href="terms.html">Terms of Service</a></footer>
+<footer class="foot"><b>AI Study</b> · a personal study tracker · <a href="docs/">How it is built</a> · <a href="privacy.html">Privacy Policy</a> · <a href="terms.html">Terms of Service</a></footer>
 <nav>
   <button id="nav-today" class="act" onclick="go('today')"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>Today</button>
   <button id="nav-plan" onclick="go('plan')"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Plan</button>
@@ -1127,8 +1127,13 @@ async function signOut() {
 }
 
 // ---- the gate: what a guest (or an account that is not invited) sees ----
+function rAbout() {
+  return `<div class="card gate"><h2>App architecture</h2>
+    <p class="muted">Curious how it works? See how AI Study is built: the architecture, the systems, every command and the code, explained with four interactive figures.</p>
+    <a class="btn ghost" style="display:block;text-align:center;text-decoration:none" href="docs/">Read how it is built</a></div>`;
+}
 function rGate() {
-  if (!sb) return `<div class="card gate"><h2>AI Study</h2><p class="muted">Sign-in needs a connection. Check your network and try again.</p><button class="btn primary undone" onclick="location.reload()">Try again</button></div>`;
+  if (!sb) return `<div class="card gate"><h2>AI Study</h2><p class="muted">Sign-in needs a connection. Check your network and try again.</p><button class="btn primary undone" onclick="location.reload()">Try again</button></div>` + rAbout();
   const who = me && !me.ai_allowed ? me : null;
   const err = authErr ? "That Google account is not on the invite list yet. Request an invite below." : cloudMsg;
   const top = `<div class="card gate"><h2>Sign in</h2>
@@ -1136,7 +1141,7 @@ function rGate() {
     ${err ? `<p class="muted" style="color:#C0392B">${esc(err)}</p>` : ""}
     ${who ? `<button class="btn ghost" onclick="signOut()">Use a different account</button>`
           : `<button class="btn primary undone" onclick="signIn()">Sign in with Google</button><p class="muted small">Already invited? Sign in with the Google account that uses your invited email.</p>`}</div>`;
-  if (invite.sent) return top + `<div class="card gate"><h2>Request sent</h2><p class="muted">Thanks. An admin will look at it. Once it is approved, come back and sign in with Google using <b>${esc(invite.email || "that email")}</b>.</p><button class="btn ghost" onclick="invite = { sent: false }; render()">Send another request</button></div>`;
+  if (invite.sent) return top + `<div class="card gate"><h2>Request sent</h2><p class="muted">Thanks. An admin will look at it. Once it is approved, come back and sign in with Google using <b>${esc(invite.email || "that email")}</b>.</p><button class="btn ghost" onclick="invite = { sent: false }; render()">Send another request</button></div>` + rAbout();
   return top + `<div class="card gate"><h2>Request an invite</h2>
     <p class="muted">Tell us who you are. An admin reviews every request.</p>
     <input type="email" id="rqEmail" placeholder="you@gmail.com" autocomplete="email" maxlength="200" value="${escA(who ? who.email || "" : "")}">
@@ -1144,7 +1149,7 @@ function rGate() {
     <textarea id="rqNote" placeholder="Why would you like to join? (optional)" maxlength="300"></textarea>
     <div class="hp" aria-hidden="true"><label>Website <input type="text" id="rqWeb" tabindex="-1" autocomplete="off"></label></div>
     <button class="btn primary undone" id="rqBtn" onclick="submitInvite()">Send request</button>
-    <p class="muted small" id="rqMsg" role="status"></p></div>`;
+    <p class="muted small" id="rqMsg" role="status"></p></div>` + rAbout();
 }
 async function submitInvite() {
   const g = id => document.getElementById(id), msg = g("rqMsg"), btn = g("rqBtn");

@@ -17,7 +17,7 @@ Tick each box; write the failing step number and what you saw if anything fails.
 - [ ] A: *Sign in with Google* works and the Me tab shows the account and "cloud synced".
 - [ ] B (invited): signs in, lands signed in, no error.
 - [ ] C (any other Google account, **not** invited): sign-in is refused with "Access is by invitation only".
-- [ ] Signed out (a guest): the app shows **only** the gate: a sign-in button and the request form. No tabs, no lessons, no quiz, no sync dot. The Privacy and Terms links are still visible.
+- [ ] Signed out (a guest): the app shows **only** the gate: a sign-in button and the request form. No tabs, no lessons, no quiz, no sync dot. The **App architecture** card (link to the how-it-is-built page) is under the form, and the Privacy, Terms and How-it-is-built links are in the footer.
 - [ ] A Google account that is **not** invited tries to sign in: it is refused and the gate says so, with the request form below.
 - [ ] A signed-in account whose invite was removed sees the gate ("not on the invite list") with its email prefilled, and `GET /ticks` for it answers 403.
 - [ ] B does **not** see the Admin card. A does.
